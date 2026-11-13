@@ -18,6 +18,8 @@ pub struct Item {
     pub connected: bool,
     pub paired: bool,
     pub secured: bool,
+    /// NetworkManager signal strength, 0–100; absent for Bluetooth.
+    pub strength: Option<u8>,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Radio {

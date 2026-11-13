@@ -171,7 +171,8 @@ async fn real_bus_snapshot_is_read_only_and_explicit_power_and_scan_reach_only_p
     let wifi = snapshot.wifi.unwrap();
     assert!(wifi.enabled);
     assert_eq!(wifi.items[0].name, "Private fixture");
-    assert_eq!(wifi.items[0].detail, "Open · 83%");
+    assert_eq!(wifi.items[0].detail, "Open");
+    assert_eq!(wifi.items[0].strength, Some(83));
     assert!(snapshot.bluetooth.is_err());
     assert!(
         service

@@ -145,6 +145,15 @@ impl App {
                 return self.launch_app_reply(&app_id, None);
             }
             ShellCommand::ListApps => return ControlReply::Payload(self.list_apps_json()),
+            ShellCommand::OpenWirelessSettings {
+                bluetooth,
+                output_name,
+            } => {
+                return self.settings_page_reply(
+                    output_name.as_deref(),
+                    if bluetooth { "bluetooth" } else { "wifi" },
+                );
+            }
             ShellCommand::OpenSearchSettings { output_name } => {
                 return self.open_search_settings_reply(output_name.as_deref());
             }

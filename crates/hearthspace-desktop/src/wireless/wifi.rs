@@ -62,7 +62,7 @@ pub(super) async fn read(c: &Connection) -> Result<Radio> {
                 id: format!("{owner}|{ap}"),
                 name: String::from_utf8_lossy(&ssid).into_owned(),
                 detail: format!(
-                    "{} · {}%{}",
+                    "{}{}",
                     if connected {
                         "Connected"
                     } else if secure {
@@ -70,7 +70,6 @@ pub(super) async fn read(c: &Connection) -> Result<Radio> {
                     } else {
                         "Open"
                     },
-                    strength,
                     if radio.blocked {
                         " · Hardware blocked"
                     } else {
@@ -80,6 +79,7 @@ pub(super) async fn read(c: &Connection) -> Result<Radio> {
                 connected,
                 paired: false,
                 secured: secure,
+                strength: Some(strength.min(100)),
             });
         }
     }

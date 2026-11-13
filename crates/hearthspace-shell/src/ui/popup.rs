@@ -108,7 +108,9 @@ fn measured_size(
             body + measured
                 .header
                 .map_or(0.0, |header| header + kind.header_gap())
-                + measured.footer.unwrap_or(0.0)
+                + measured
+                    .footer
+                    .map_or(0.0, |footer| footer + kind.header_gap())
                 + 2.0 * (kind.padding() + BORDER)
         })
         .unwrap_or(fallback_height);
@@ -263,6 +265,19 @@ pub(super) fn panel_with_header<H: WidgetView<ShellState>, V: WidgetView<ShellSt
     )
 }
 
+pub(super) fn radio_panel<
+    H: WidgetView<ShellState>,
+    V: WidgetView<ShellState>,
+    F: WidgetView<ShellState>,
+>(
+    output: &ShellOutputInstance,
+    header: H,
+    content: V,
+    footer: F,
+) -> impl WidgetView<ShellState> + use<H, V, F> {
+    framed_sections(output, PopupKind::Controls, header, content, Some(footer))
+}
+
 pub(super) fn launcher_panel<
     H: WidgetView<ShellState>,
     V: WidgetView<ShellState>,
@@ -273,7 +288,20 @@ pub(super) fn launcher_panel<
     content: V,
     footer: Option<F>,
 ) -> impl WidgetView<ShellState> + use<H, V, F> {
-    let kind = PopupKind::Search;
+    framed_sections(output, PopupKind::Search, header, content, footer)
+}
+
+fn framed_sections<
+    H: WidgetView<ShellState>,
+    V: WidgetView<ShellState>,
+    F: WidgetView<ShellState>,
+>(
+    output: &ShellOutputInstance,
+    kind: PopupKind,
+    header: H,
+    content: V,
+    footer: Option<F>,
+) -> impl WidgetView<ShellState> + use<H, V, F> {
     let key = output.key().to_owned();
     let footer = resize_observer(
         move |state: &mut ShellState, size: Size| {
@@ -300,7 +328,7 @@ pub(super) fn launcher_panel<
             footer,
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(0.0.px()),
+        .gap(kind.header_gap().px()),
     )
 }
 

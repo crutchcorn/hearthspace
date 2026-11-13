@@ -95,6 +95,7 @@ fn validate_command(command: &str) -> io::Result<()> {
             ShellCommand::LaunchApp(_)
                 | ShellCommand::LaunchAppOnOutput { .. }
                 | ShellCommand::OpenSearchSettings { .. }
+                | ShellCommand::OpenWirelessSettings { .. }
         )
     ) || [
         "favorite-gesture-launch ",

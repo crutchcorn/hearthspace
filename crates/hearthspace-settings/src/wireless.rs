@@ -81,6 +81,7 @@ pub(crate) fn panel(state: &SettingsApp, bluetooth: bool) -> impl WidgetView<Set
                         connected: item.connected,
                         known: item.paired,
                         secured: item.secured,
+                        strength: item.strength,
                         actions,
                     }
                 })

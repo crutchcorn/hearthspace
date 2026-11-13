@@ -142,6 +142,7 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
                             connected: true,
                             paired: true,
                             secured: true,
+                            strength: (kind == Kind::Wifi).then_some(83),
                         },
                         Item {
                             id: "two".into(),
@@ -150,6 +151,7 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
                             connected: false,
                             paired: false,
                             secured: false,
+                            strength: (kind == Kind::Wifi).then_some(20),
                         },
                     ],
                 };
@@ -162,9 +164,9 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
                 s.wireless.sender = Some(tx);
                 let mut ui = Ui::new(s, view, (width, 400));
                 let refresh = ui.button(if kind == Kind::Wifi {
-                    "Refresh networks"
+                    "WiFi settings"
                 } else {
-                    "Scan for devices"
+                    "Bluetooth settings"
                 });
                 ui.harness.focus_on(Some(refresh));
                 assert_eq!(ui.harness.focused_widget_id(), Some(refresh));
@@ -201,54 +203,7 @@ fn radio_panels_render_in_both_palettes_at_narrow_widths_without_touching_servic
 }
 
 #[test]
-fn details_navigation_is_local_and_a_removed_network_cannot_rebind_the_inspector() {
-    let mut s = ShellState::new("/unused".into(), vec!["A".into()]);
-    s.toggle_quick_panel("A", Kind::Wifi);
-    s.wireless.snapshot.wifi = Ok(Radio {
-        enabled: true,
-        items: vec![Item {
-            id: "first".into(),
-            name: "Studio".into(),
-            detail: "Connected".into(),
-            connected: true,
-            ..Default::default()
-        }],
-        ..Default::default()
-    });
-    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
-    s.wireless.sender = Some(tx);
-    let mut ui = Ui::new(s, view, (320, 400));
-    ui.activate(ui.button("Studio details"));
-    ui.dispatch(&view);
-    assert_eq!(ui.state.wireless.details.as_deref(), Some("first"));
-    assert!(
-        rx.try_recv().is_err(),
-        "opening details must not mutate radios"
-    );
-    let back = ui.button("Back");
-    ui.activate(back);
-    ui.dispatch(&view);
-    assert!(ui.state.wireless.details.is_none());
-    ui.activate(ui.button("Studio details"));
-    ui.dispatch(&view);
-    let mut snapshot = ui.state.wireless.snapshot.clone();
-    snapshot.wifi.as_mut().unwrap().items[0].id = "replacement".into();
-    ui.state.wireless.receive(Update {
-        snapshot,
-        finished: false,
-        error: None,
-    });
-    ui.rebuild(&view);
-    ui.dispatch(&view);
-    assert!(ui.state.wireless.details.is_none());
-    assert!(rx.try_recv().is_err());
-    ui.activate(ui.button("Disconnect from Studio"));
-    ui.dispatch(&view);
-    assert!(matches!(rx.try_recv(),Ok(Command::DisconnectWifi(id)) if id=="replacement"));
-}
-
-#[test]
-fn powered_off_radio_hides_device_actions_and_disables_discovery() {
+fn powered_off_radio_hides_device_actions_and_keeps_settings_available() {
     let mut s = ShellState::new("/unused".into(), vec!["A".into()]);
     s.toggle_quick_panel("A", Kind::Bluetooth);
     s.wireless.snapshot.bluetooth = Ok(Radio {
@@ -264,8 +219,8 @@ fn powered_off_radio_hides_device_actions_and_disables_discovery() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     s.wireless.sender = Some(tx);
     let ui = Ui::new(s, view, (320, 400));
-    let scan = ui.button("Scan for devices");
-    assert!(ui.harness.access_node(scan).unwrap().is_disabled());
+    let scan = ui.button("Bluetooth settings");
+    assert!(!ui.harness.access_node(scan).unwrap().is_disabled());
     assert!(
         !ids(&ui.harness).into_iter().any(|id| ui
             .harness

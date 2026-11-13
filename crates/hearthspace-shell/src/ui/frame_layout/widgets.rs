@@ -131,7 +131,26 @@ pub(super) fn content(
             Some(Kind::Bluetooth),
         ),
         "wifi" => (
-            Icon::Wifi,
+            state
+                .wireless
+                .snapshot
+                .wifi
+                .as_ref()
+                .ok()
+                .map_or(Icon::Wifi, |radio| {
+                    if !radio.enabled {
+                        Icon::WifiOff
+                    } else {
+                        radio
+                            .items
+                            .iter()
+                            .find(|item| item.connected)
+                            .and_then(|item| item.strength)
+                            .map_or(Icon::WifiSignal { strength: 0 }, |strength| {
+                                Icon::WifiSignal { strength }
+                            })
+                    }
+                }),
             "Wi-Fi settings".into(),
             Some("Wi-Fi".into()),
             output.show_controls && output.quick_panel == Kind::Wifi,

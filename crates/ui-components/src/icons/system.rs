@@ -34,6 +34,18 @@ pub(super) fn append(icon: Icon, _: bool, g: &mut Geometry) -> bool {
             g.path("M3 8c5-4 13-4 18 0M6.5 11.5c3.1-2.5 7.9-2.5 11 0M10 14.5c1.1-.8 2.9-.8 4 0");
             g.circle(12.0, 20.0, 1.0, false);
         }
+        Icon::WifiSignal { strength } => {
+            if strength >= 67 {
+                g.path("M3 8c5-4 13-4 18 0");
+            }
+            if strength >= 34 {
+                g.path("M6.5 11.5c3.1-2.5 7.9-2.5 11 0");
+            }
+            if strength > 0 {
+                g.path("M10 14.5c1.1-.8 2.9-.8 4 0");
+            }
+            g.circle(12.0, 20.0, 1.0, false);
+        }
         Icon::WifiOff => {
             g.path("M3 8c5-4 13-4 18 0M6.5 11.5c3.1-2.5 7.9-2.5 11 0M10 14.5c1.1-.8 2.9-.8 4 0");
             g.circle(12.0, 20.0, 1.0, false);

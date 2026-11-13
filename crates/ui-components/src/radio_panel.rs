@@ -23,6 +23,7 @@ pub struct Row<A> {
     pub connected: bool,
     pub known: bool,
     pub secured: bool,
+    pub strength: Option<u8>,
     pub actions: Vec<(String, A)>,
 }
 pub struct Panel<A> {
@@ -42,6 +43,69 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
     action: impl Fn(&mut S, A) + Clone + Send + Sync + 'static,
     navigate: impl Fn(&mut S, Option<String>) + Clone + Send + Sync + 'static,
 ) -> impl WidgetView<S> {
+    flex_col((
+        header(
+            panel.title,
+            panel.enabled,
+            panel.busy || panel.enabled.is_none() || panel.blocked,
+            toggle,
+        ),
+        body(palette, false, panel, scan, action, navigate),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+    .gap(16.0.px())
+}
+/// Fixed radio heading; keep it outside a constrained connection-list portal.
+pub fn header<S: 'static>(
+    title: &'static str,
+    enabled: Option<bool>,
+    disabled: bool,
+    toggle: impl Fn(&mut S, bool) + Send + Sync + 'static,
+) -> impl WidgetView<S> {
+    flex_row((
+        label(title).text_size(15.).flex(1.),
+        identified(
+            format!("{title}:{enabled:?}"),
+            controls::toggle::toggle(title, enabled.unwrap_or(false), disabled, toggle),
+        )
+        .width(40.0.px())
+        .height(24.0.px()),
+    ))
+    .height(44.0.px())
+}
+/// Settings navigation has its own identity when the requested radio changes.
+pub fn settings_link<S: 'static>(
+    palette: Palette,
+    bluetooth: bool,
+    open: impl Fn(&mut S) + Send + Sync + 'static,
+) -> impl WidgetView<S> {
+    let title = if bluetooth {
+        "Bluetooth settings"
+    } else {
+        "WiFi settings"
+    };
+    identified(
+        title.to_owned(),
+        controls::form_button_with_icon(
+            palette,
+            Icon::Settings,
+            title,
+            ButtonVariant::Quiet,
+            false,
+            open,
+        ),
+    )
+}
+/// Shared list content. Compact tray mode omits discovery, grouping, and details;
+/// its caller provides a fixed Settings link outside the scroll viewport.
+pub fn body<S: 'static, A: Clone + Send + Sync + 'static>(
+    palette: Palette,
+    compact: bool,
+    panel: Panel<A>,
+    scan: impl Fn(&mut S) + Send + Sync + 'static,
+    action: impl Fn(&mut S, A) + Clone + Send + Sync + 'static,
+    navigate: impl Fn(&mut S, Option<String>) + Clone + Send + Sync + 'static,
+) -> impl WidgetView<S> {
     let bluetooth = panel.title == "Bluetooth";
     let disabled = panel.busy || panel.enabled.is_none() || panel.blocked;
     let glyph = if bluetooth {
@@ -52,7 +116,7 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
     let selected = panel
         .rows
         .iter()
-        .find(|r| Some(&r.id) == panel.selected.as_ref());
+        .find(|r| !compact && Some(&r.id) == panel.selected.as_ref());
     let body: Box<AnyWidgetView<S>> = if panel.enabled == Some(false) {
         flex_col((
             label(format!("{} is off", panel.title)).text_size(13.),
@@ -64,18 +128,20 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
             .text_size(11.)
             .color(palette.muted)
             .line_break_mode(LineBreaking::WordWrap),
-            controls::form_button_with_icon(
-                palette,
-                Icon::RotateCcw,
-                if bluetooth {
-                    "Scan for devices"
-                } else {
-                    "Refresh networks"
-                },
-                ButtonVariant::Quiet,
-                true,
-                scan,
-            ),
+            (!compact).then(|| {
+                controls::form_button_with_icon(
+                    palette,
+                    Icon::RotateCcw,
+                    if bluetooth {
+                        "Scan for devices"
+                    } else {
+                        "Refresh networks"
+                    },
+                    ButtonVariant::Quiet,
+                    true,
+                    scan,
+                )
+            }),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(8.0.px())
@@ -126,24 +192,28 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
         .boxed()
     } else {
         let mut rows: Vec<Box<AnyWidgetView<S>>> = vec![];
-        for (heading, known) in if bluetooth {
+        for (heading, known) in if compact {
+            vec![("", true)]
+        } else if bluetooth {
             vec![("My devices", true), ("Nearby devices", false)]
         } else {
             vec![("Networks", true)]
         } {
             let first = rows.is_empty();
-            rows.push(
-                label(heading)
-                    .text_size(11.)
-                    .color(palette.muted)
-                    .padding(Padding {
-                        top: if first { 0.0 } else { 16.0 }.px(),
-                        bottom: 6.0.px(),
-                        left: 0.0.px(),
-                        right: 0.0.px(),
-                    })
-                    .boxed(),
-            );
+            if !compact {
+                rows.push(
+                    label(heading)
+                        .text_size(11.)
+                        .color(palette.muted)
+                        .padding(Padding {
+                            top: if first { 0.0 } else { 16.0 }.px(),
+                            bottom: 6.0.px(),
+                            left: 0.0.px(),
+                            right: 0.0.px(),
+                        })
+                        .boxed(),
+                );
+            }
             for row in panel
                 .rows
                 .iter()
@@ -165,12 +235,23 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
                 };
                 let id = row.id.clone();
                 let details = navigate.clone();
+                let signal = icon(
+                    row.strength
+                        .map_or(glyph, |strength| Icon::WifiSignal { strength }),
+                    19.,
+                )
+                .color(if row.connected {
+                    palette.accent
+                } else {
+                    palette.text
+                });
+                let signal = if let Some(strength) = row.strength {
+                    signal.label(format!("Signal strength {strength}%"))
+                } else {
+                    signal
+                };
                 let content = flex_row((
-                    icon(glyph, 19.).color(if row.connected {
-                        palette.accent
-                    } else {
-                        palette.text
-                    }),
+                    signal,
                     flex_col((
                         label(row.name.clone())
                             .text_size(13.)
@@ -228,9 +309,11 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
                                 disabled || panel.enabled != Some(true),
                             )
                             .flex(1.),
-                            controls::button_frame(detail, ButtonVariant::Quiet, disabled)
-                                .width(40.0.px())
-                                .height(64.0.px()),
+                            (!compact).then(|| {
+                                controls::button_frame(detail, ButtonVariant::Quiet, disabled)
+                                    .width(40.0.px())
+                                    .height(64.0.px())
+                            }),
                         ))
                         .cross_axis_alignment(CrossAxisAlignment::Stretch),
                     )
@@ -242,40 +325,26 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(2.0.px()),
-            flex_row((controls::form_button_with_icon(
-                palette,
-                Icon::RotateCcw,
-                if bluetooth {
-                    "Scan for devices"
-                } else {
-                    "Refresh networks"
-                },
-                ButtonVariant::Quiet,
-                disabled || panel.enabled != Some(true),
-                scan,
-            ),)),
+            (!compact).then(|| {
+                flex_row((controls::form_button_with_icon(
+                    palette,
+                    Icon::RotateCcw,
+                    if bluetooth {
+                        "Scan for devices"
+                    } else {
+                        "Refresh networks"
+                    },
+                    ButtonVariant::Quiet,
+                    disabled || panel.enabled != Some(true),
+                    scan,
+                ),))
+            }),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(8.0.px())
         .boxed()
     };
     flex_col((
-        // A bare title and compact Shared Controls switch, as in the reference.
-        flex_row((
-            label(panel.title).text_size(15.).flex(1.),
-            identified(
-                format!("{}:{:?}", panel.title, panel.enabled),
-                controls::toggle::toggle(
-                    panel.title,
-                    panel.enabled.unwrap_or(false),
-                    disabled,
-                    toggle,
-                ),
-            )
-            .width(40.0.px())
-            .height(24.0.px()),
-        ))
-        .height(44.0.px()),
         panel.message.map(|text| {
             label(text)
                 .text_size(12.)
@@ -287,8 +356,14 @@ pub fn view<S: 'static, A: Clone + Send + Sync + 'static>(
                 .text_size(12.)
                 .line_break_mode(LineBreaking::WordWrap)
         }),
-        (panel.rows.is_empty() && panel.enabled == Some(true))
-            .then(|| label("No devices found. Refresh to search nearby.").text_size(12.)),
+        (panel.rows.is_empty() && panel.enabled == Some(true)).then(|| {
+            label(if compact {
+                "No connections available."
+            } else {
+                "No devices found. Refresh to search nearby."
+            })
+            .text_size(12.)
+        }),
         panel.busy.then(|| label("Working…").text_size(12.)),
         body,
     ))

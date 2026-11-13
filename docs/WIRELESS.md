@@ -1,20 +1,22 @@
 # Wi-Fi and Bluetooth
 
 Open **Wi-Fi settings** or **Bluetooth settings** in the frame, or find them in
-canvas search. The same controls are available in the **Wi-Fi** and **Bluetooth** Settings pages. Add or
-move the Bluetooth frame item through **Change layout** if your saved layout
+canvas search. The dropdowns offer connection actions and a button to open the corresponding
+Settings page. Pairing, discovery, forgetting devices, and details live in
+Settings. Add or move the Bluetooth frame item through **Change layout** if your saved layout
 predates it.
 
 ## Wi-Fi
 
 The panel shows nearby networks known to NetworkManager, connection status, and
-signal strength. **Refresh devices** requests a scan; merely opening a panel does
+signal strength through the Wi-Fi icon’s arcs rather than a percentage label.
+In Settings, **Refresh networks** requests a scan; merely opening a panel does
 not scan or connect. The switch enables or disables Wi-Fi. A hardware block
 must be cleared with the machine's switch or airplane-mode controls.
 
 Choose a network row to use a saved connection or join an open, WPA/WPA2 personal,
 or WPA3 personal network. A new secured connection opens a masked password
-dialog. Canceling it leaves the connection unchanged. The chevron opens details
+dialog. Canceling it leaves the connection unchanged. In Settings, the chevron opens details
 with the connection actions; **Back** returns to the list. **Disconnect** targets the
 selected active connection; **Forget** removes matching saved profiles. Forget
 has no effect when the network has no saved profile.
@@ -26,9 +28,10 @@ connection preferences; Hearthspace does not write a separate wireless config.
 
 ## Bluetooth
 
-Enable Bluetooth, then choose **Refresh devices** to discover nearby devices for
+The tray lists paired or connected devices for connecting and disconnecting.
+Choose **Bluetooth settings**, then **Scan for devices** to discover nearby devices for
 five seconds. Hearthspace releases only its own discovery session. Choose
-an unpaired device to pair, or a paired device to connect/disconnect. Open its
+an unpaired device to pair, or a paired device to connect/disconnect. In Settings, open its
 chevron details to use
 **Forget** to remove its pairing. Put the device into pairing mode first.
 
@@ -71,7 +74,8 @@ interfaces. They test read-only snapshots, explicit writes, passwords,
 authentication cancellation, daemon replacement, and pairing-agent callbacks.
 The native widget tests cover pending/error state and device replacement during
 a held press. Storybook provides Wi-Fi and Bluetooth Shared Controls stories
-without contacting system services.
+without contacting system services, including a compact tray variant. The tray
+keeps its toggle and Settings link outside the scrolling connection list.
 
 These tests do not establish hardware association, driver support, pairing with
 a physical peripheral, or distribution authorization policy. Test those locally

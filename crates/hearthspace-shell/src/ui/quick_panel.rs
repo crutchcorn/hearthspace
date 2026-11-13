@@ -133,13 +133,17 @@ pub(super) fn panel(
     if output.quick_panel == Kind::Clock {
         return super::quick_clock::panel(state, output).boxed();
     }
+    if matches!(output.quick_panel, Kind::Wifi | Kind::Bluetooth) {
+        return super::wireless::panel(state, output, output.quick_panel == Kind::Bluetooth)
+            .boxed();
+    }
     let content = match output.quick_panel {
-        Kind::Wifi => super::wireless::panel(state, false).boxed(),
-        Kind::Bluetooth => super::wireless::panel(state, true).boxed(),
         Kind::Sound => sound(state, output).boxed(),
         Kind::Brightness => brightness(state, output).boxed(),
         Kind::Battery => battery(state).boxed(),
-        Kind::Clock | Kind::Tools => unreachable!("handled before standard status panel"),
+        Kind::Wifi | Kind::Bluetooth | Kind::Clock | Kind::Tools => {
+            unreachable!("handled before standard status panel")
+        }
     };
     popup::panel_named(
         output,
@@ -343,3 +347,7 @@ mod size_tests;
 #[cfg(test)]
 #[path = "quick_wireless_tests.rs"]
 mod wireless_tests;
+
+#[cfg(test)]
+#[path = "quick_wireless_navigation_tests.rs"]
+mod wireless_navigation_tests;

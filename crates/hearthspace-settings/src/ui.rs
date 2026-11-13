@@ -291,3 +291,6 @@ mod system_tests;
 
 #[cfg(test)]
 mod shortcuts_tests;
+
+#[cfg(test)]
+mod wireless_tests;
