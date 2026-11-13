@@ -92,25 +92,27 @@ class PopupPresentationTests(unittest.TestCase):
     def test_raised_tint_blends_with_actual_backdrop_and_rejects_opaque_or_missing_panel(
         self,
     ):
-        visible = self.frame([((0, 20, 100, 100), (221, 219, 214))])
-        result = presentation.material_tint(self.background, visible, self.surface)
-        self.assertEqual(result["background"], [90, 80, 70])
-        self.assertEqual(result["visible"], [221, 219, 214])
-        for wrong in ((250, 249, 246), (90, 80, 70), (20, 20, 20)):
-            with (
-                self.subTest(wrong=wrong),
-                self.assertRaisesRegex(ControlError, "tint"),
-            ):
-                presentation.material_tint(
-                    self.background,
-                    self.frame([((0, 20, 100, 100), wrong)]),
-                    self.surface,
-                )
+        for kind in ("search", "power"):
+            surface = self.surface | {"kind": kind}
+            visible = self.frame([((0, 20, 100, 100), (221, 219, 214))])
+            result = presentation.material_tint(self.background, visible, surface)
+            self.assertEqual(result["background"], [90, 80, 70])
+            self.assertEqual(result["visible"], [221, 219, 214])
+            for wrong in ((174, 169, 161), (250, 249, 246), (90, 80, 70), (20, 20, 20)):
+                with (
+                    self.subTest(wrong=wrong),
+                    self.assertRaisesRegex(ControlError, "tint"),
+                ):
+                    presentation.material_tint(
+                        self.background,
+                        self.frame([((0, 20, 100, 100), wrong)]),
+                        surface,
+                    )
 
-    def test_power_and_map_use_chrome_and_reject_raised_opaque_or_missing_fill(
+    def test_map_uses_chrome_and_rejects_raised_opaque_or_missing_fill(
         self,
     ):
-        for kind in ("power", "map"):
+        for kind in ("map",):
             surface = self.surface | {"kind": kind}
             visible = self.frame([((0, 20, 100, 100), (174, 169, 161))])
             result = presentation.material_tint(self.background, visible, surface)
@@ -226,6 +228,39 @@ class PopupPresentationTests(unittest.TestCase):
                     presentation.search_width(
                         {"width": expected + 20}, {"logical_width": width}
                     )
+
+    def test_power_fit_uses_the_last_available_action(self):
+        node = {"bounds": {"x": 20, "y": 70, "width": 160, "height": 64}}
+        for available, last in [
+            ({"Log off"}, "Log off"),
+            ({"Log off", "Reboot"}, "Reboot"),
+            ({"Log off", "Reboot", "Turn off"}, "Turn off"),
+        ]:
+            with self.subTest(available=available):
+                smoke = Mock()
+
+                def until(_label, condition):
+                    self.assertIsNone(condition())
+                    return condition()
+
+                smoke.until.side_effect = until
+                with (
+                    patch.object(
+                        presentation.checks, "panel", return_value=self.surface
+                    ),
+                    patch.object(
+                        presentation.checks,
+                        "elements",
+                        side_effect=lambda _smoke, name, available=available, **_kw: (
+                            [node] if name in available else []
+                        ),
+                    ) as elements,
+                ):
+                    self.assertEqual(
+                        presentation.fitted(smoke, "power", "Log off", {"scale": 2}),
+                        (self.surface, 13),
+                    )
+                    elements.assert_any_call(smoke, last, role=None)
 
 
 class SearchSelectionTests(unittest.TestCase):

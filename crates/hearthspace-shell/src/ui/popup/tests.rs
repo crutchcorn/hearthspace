@@ -136,7 +136,12 @@ fn empty_notifications_shrink_long_content_caps_and_removal_shrinks_again() {
 
 #[test]
 fn power_confirmation_and_wrapped_errors_measure_their_actual_content() {
-    let mut ui = Ui::new(state(), power, (300, 245));
+    let mut state = state();
+    let _commands = crate::ui::power_task::test_channel(&mut state);
+    state.power.status.available = true;
+    state.power.status.reboot_available = true;
+    state.power.status.power_off_available = true;
+    let mut ui = Ui::new(state, power, (300, 245));
     let measured =
         |state: &ShellState| session_controls::power_size(state, &state.outputs[0]).height;
     let normal = measured(&ui.state);

@@ -129,15 +129,13 @@ def material_tint(background, visible, surface):
     left, top, _, bottom = visible.rect(surface)
     point = (left + round(4 * visible.metadata["scale"]), (top + bottom) // 2)
     behind = background.rgb(*point)
-    # Power and Overview use CHROME (#f6f4ef at 54%); other popups retain
+    # Overview uses CHROME (#f6f4ef at 54%); status popups, including Power, use
     # CHROME_RAISED (#faf9f6 at 82%). This point is beside content, away from
     # the one-pixel border and all rounded corners. Sample
     # the side padding over the uniform oversized fixture: a nearby window edge
     # would let genuine blur mix in wallpaper, invalidating a raw-pixel alpha check.
     tint, alpha = (
-        ((246, 244, 239), 138)
-        if surface["kind"] in ("power", "map")
-        else ((250, 249, 246), 209)
+        ((246, 244, 239), 138) if surface["kind"] == "map" else ((250, 249, 246), 209)
     )
     expected = [
         round((channel * alpha + source * (255 - alpha)) / 255)
@@ -198,7 +196,20 @@ def fitted(smoke, kind, last_name, output, *, max_bottom_gap=24):
     def settled():
         nonlocal previous
         surface = checks.panel(smoke, kind)
-        elements = checks.elements(smoke, last_name, role=None)
+        name = last_name
+        if kind == "power":
+            # Capabilities can remove rows; measure the actual final action.
+            name = next(
+                (
+                    action
+                    for action in ("Turn off", "Reboot", "Log off")
+                    if checks.elements(smoke, action)
+                ),
+                None,
+            )
+            if name is None:
+                return None
+        elements = checks.elements(smoke, name, role=None)
         if not surface or not elements:
             return None
         gap = bottom_gap(surface, elements[0], output["scale"])
@@ -259,9 +270,8 @@ def panels(smoke, output):
             "Open: Hearthspace Settings",
         ),
         ("notifications", "Notifications", "No notifications yet"),
-        # Capability feedback precedes the rows; the final action stays visible
-        # even when unavailable and marks the bottom of the complete menu.
-        ("power", "Power", "Turn off"),
+        # The final available action marks the bottom of the complete menu.
+        ("power", "Power", "Log off"),
         ("map", "Canvas map", "Zoom in"),
     ):
         checks.click(smoke, button)

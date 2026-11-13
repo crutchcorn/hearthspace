@@ -50,7 +50,7 @@ the aggregate, charging states and warning levels.
 
 Choose **Power → Suspend** in a native managed session. This action is also
 available on desktops without batteries when logind permits suspend. The menu
-disables it with an explanation when sleep is unsupported, authorization is
+omits it when sleep is unsupported, authorization is
 required, another session is active, or the desktop is not ready. Nested and
 headless sessions cannot suspend the host through this menu.
 
@@ -99,9 +99,10 @@ bus `Unlock` signal or agent command bypasses the lock owner's authentication.
 
 Choose **Power → Reboot** or **Turn off**, then confirm in the centered dialog.
 Cancel has initial focus; Escape or Cancel dismisses without sending a power
-request. The actions are unavailable when logind requires interactive
-authorization, the session is inactive or remote, another power operation is
-pending, or the compositor is not ready.
+request. Unavailable actions are omitted without explanatory captions when logind
+requires interactive authorization, the session is inactive or remote, or the
+coordinator is not ready. During an in-progress request, available rows remain
+visible but disabled.
 
 The supervisor rechecks those conditions and shutdown inhibitors immediately
 before dispatch. It calls logind's `RebootWithFlags` or `PowerOffWithFlags` with
