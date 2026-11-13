@@ -8,6 +8,7 @@ mod view;
 pub(crate) mod widget;
 pub use compatibility::{edge_light, glass_edge, paint_button, paint_surface};
 pub use focus::{FocusIndicator, RestoreFocus};
+pub use paint::paint_dialog_with_palette;
 pub use paint::{
     dot_pattern, edge_light_with_palette, glass_edge_with_palette, paint_button_with_palette,
     paint_surface_with_palette, shadow,
@@ -50,11 +51,13 @@ pub(crate) enum Material {
     Surface(SettingsSurface),
     FormButton(crate::controls::ButtonVariant),
     FormField(bool),
+    Dialog,
 }
 
 impl Material {
     pub(crate) fn radius(self) -> f64 {
         match self {
+            Self::Dialog => 20.0,
             Self::Button(SettingsButton::Card, _) | Self::Surface(_) => crate::RADIUS_TILE,
             Self::Button(_, _) | Self::FormButton(_) | Self::FormField(_) => crate::RADIUS_CONTROL,
         }
@@ -109,6 +112,17 @@ pub(crate) fn form_field<State: 'static, V: WidgetView<State>>(
     MaterialView {
         inner,
         material: Material::FormField(invalid),
+        disabled: false,
+    }
+}
+
+/// The system confirmation card, shared by session and display-mode dialogs.
+pub fn dialog_surface<State: 'static, Action: 'static, V: WidgetView<State, Action>>(
+    inner: V,
+) -> MaterialView<V> {
+    MaterialView {
+        inner,
+        material: Material::Dialog,
         disabled: false,
     }
 }

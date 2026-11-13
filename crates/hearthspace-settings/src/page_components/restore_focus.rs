@@ -24,6 +24,7 @@ pub(crate) fn restore_focus_after_close<V: WidgetView<SettingsApp>>(
         inner,
         open,
         initial_focus: false,
+        dialog: None,
     }
 }
 
@@ -32,6 +33,16 @@ pub(crate) fn focus_on_mount<V: WidgetView<SettingsApp>>(inner: V) -> RestoreFoc
         inner,
         open: false,
         initial_focus: true,
+        dialog: None,
+    }
+}
+
+pub(crate) fn dialog<V: WidgetView<SettingsApp>>(inner: V, label: &str) -> RestoreFocus<V> {
+    RestoreFocus {
+        inner,
+        open: false,
+        initial_focus: false,
+        dialog: Some(label.into()),
     }
 }
 
@@ -39,6 +50,7 @@ pub(crate) struct RestoreFocus<V> {
     inner: V,
     open: bool,
     initial_focus: bool,
+    dialog: Option<String>,
 }
 impl<V> ViewMarker for RestoreFocus<V> {}
 const CONTENT: ViewId = ViewId::new(0);
@@ -55,6 +67,7 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for RestoreFocus
             ctx.create_pod(FocusScope {
                 inner: inner.new_widget.erased().to_pod(),
                 initial_focus: self.initial_focus,
+                dialog: self.dialog.clone(),
             }),
             view_state,
         )
@@ -67,6 +80,10 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for RestoreFocus
         mut element: Mut<'_, Self::Element>,
         state: &mut SettingsApp,
     ) {
+        if self.dialog != previous.dialog {
+            element.widget.dialog = self.dialog.clone();
+            element.ctx.request_accessibility_update();
+        }
         ctx.with_id(CONTENT, |ctx| {
             self.inner.rebuild(
                 &previous.inner,
@@ -130,6 +147,7 @@ fn return_to_control(mut child: WidgetMut<'_, dyn Widget>) {
 pub(crate) struct FocusScope {
     inner: WidgetPod<dyn Widget>,
     initial_focus: bool,
+    dialog: Option<String>,
 }
 impl FocusScope {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -173,9 +191,18 @@ impl Widget for FocusScope {
     }
     fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, _: &mut Painter<'_>) {}
     fn accessibility_role(&self) -> Role {
-        Role::GenericContainer
+        if self.dialog.is_some() {
+            Role::Dialog
+        } else {
+            Role::GenericContainer
+        }
     }
-    fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, _: &mut Node) {}
+    fn accessibility(&mut self, _: &mut AccessCtx<'_>, _: &PropertiesRef<'_>, node: &mut Node) {
+        if let Some(label) = &self.dialog {
+            node.set_label(label.clone());
+            node.set_modal();
+        }
+    }
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::from_slice(&[self.inner.id()])
     }

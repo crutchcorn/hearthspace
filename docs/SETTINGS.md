@@ -459,9 +459,11 @@ Fractional rates are retained in millihertz. The compositor validates the comple
 timing identity again before applying a request. Nested and headless sessions
 report their current mode without providing hardware mode switching.
 
-After selecting a mode, the display editor becomes a **Keep these display
-settings?** confirmation. **Revert** receives initial keyboard focus. **Keep
-changes** is enabled only after the native presenter has completed a frame in the
+After selecting a mode, a **Keep these display settings?** system dialog is
+centered on that display over a full-screen dimmed backdrop, like the Log off
+confirmation. Background application and shell input is blocked until it closes.
+**Revert** receives initial keyboard focus; Escape also reverts the change.
+**Keep changes** is enabled only after the native presenter has completed a frame in the
 new configuration. Confirmation then has a fixed 15-second deadline; polling or
 input cannot extend it. If presentation does not succeed within five seconds,
 the compositor restores the previous mode automatically. Closing Settings,

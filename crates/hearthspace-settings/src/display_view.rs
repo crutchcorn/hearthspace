@@ -22,11 +22,8 @@ use crate::{
 mod modes;
 
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
-    if state.display_layout.modes.snapshot.preview.is_some() {
-        return modes::confirmation(state).unwrap();
-    }
     flex_col((
-        modes::confirmation(state),
+        modes::message(state),
         flex_row((
             FlexSpacer::Flex(1.0),
             sized_box(monitor_layout_editor()).width(xilem::masonry::layout::Dim::FitContent),
@@ -176,8 +173,7 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
     .boxed()
 }
 
-// The backend currently reports one active mode, not a list of switchable modes.
-// Keep that real option inspectable without inventing display-mode changes.
+// Non-native backends expose their current mode without claiming switching support.
 fn current_option(
     palette: components::Palette,
     name: &'static str,

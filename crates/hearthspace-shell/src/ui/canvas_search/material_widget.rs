@@ -163,7 +163,13 @@ impl Widget for PanelWidget {
             }
             return;
         }
-        let shell = matches!(self.kind, Kind::Shell | Kind::Tooltip);
+        if self.kind == Kind::Shell {
+            hearthspace_ui_components::settings_material::paint_dialog_with_palette(
+                painter, rect, active, palette,
+            );
+            return;
+        }
+        let shell = self.kind == Kind::Tooltip;
         let active = active && self.kind != Kind::Tooltip;
         let radius = if self.kind == Kind::Tooltip {
             10.0

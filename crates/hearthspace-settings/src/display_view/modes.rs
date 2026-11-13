@@ -93,21 +93,8 @@ pub(super) fn controls(state: &SettingsApp, id: &str) -> Option<(Field, Field)> 
     Some((resolution.boxed(), refresh.boxed()))
 }
 
-pub(super) fn confirmation(state: &SettingsApp) -> Option<Box<AnyWidgetView<SettingsApp>>> {
-    use components::controls::{ButtonVariant, form_button};
+pub(super) fn message(state: &SettingsApp) -> Option<Box<AnyWidgetView<SettingsApp>>> {
     let modes = &state.display_layout.modes;
-    let Some(preview) = &modes.snapshot.preview else {
-        let message = modes.error.clone().or(modes.snapshot.message.clone())?;
-        return Some(note(state.palette(), message).boxed());
-    };
-    let token = preview.token;
-    Some(flex_col((
-        label("Keep these display settings?").text_size(16.0),
-        note(state.palette(),if preview.ready {format!("Reverting in {} seconds unless you keep these settings.",preview.seconds_remaining)} else {"Waiting for the new mode to be presented… Changes revert automatically if it fails.".into()}),
-        flex_row((
-            crate::page_components::focus_on_mount(form_button(state.palette(),"Revert",ButtonVariant::Neutral,modes.busy,move |state|crate::display_modes::request(state,Request::Revert{token}))),
-            form_button(state.palette(),"Keep changes",ButtonVariant::Primary,modes.busy || !preview.ready,move |state|crate::display_modes::request(state,Request::Keep{token})),
-        )).gap(8.0.px()),
-        note(state.palette(),modes.error.clone().unwrap_or_default()),
-    )).cross_axis_alignment(CrossAxisAlignment::Stretch).gap(8.0.px()).boxed())
+    let message = modes.error.clone().or(modes.snapshot.message.clone())?;
+    Some(note(state.palette(), message).boxed())
 }

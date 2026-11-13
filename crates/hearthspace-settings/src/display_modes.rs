@@ -16,6 +16,9 @@ pub(crate) struct State {
     pub busy: bool,
     connection_failed: bool,
     sender: Option<UnboundedSender<Request>>,
+    pub dialog: Option<(u64, xilem::WindowId)>,
+    pub dismissed_token: Option<u64>,
+    pub dialog_height: Option<f64>,
 }
 
 pub(crate) fn request(state: &mut SettingsApp, operation: Request) {

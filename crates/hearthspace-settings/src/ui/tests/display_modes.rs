@@ -11,7 +11,11 @@ fn mode(id: &str, w: i32, h: i32, rate: i32) -> Mode {
     }
 }
 fn view(state: &SettingsApp) -> impl WidgetView<SettingsApp, Widget: Sized> + use<> {
-    sized_box(crate::display_view::view(state))
+    sized_box(if state.display_layout.modes.snapshot.preview.is_some() {
+        crate::display_mode_dialog::view(state).boxed()
+    } else {
+        crate::display_view::view(state)
+    })
 }
 fn setup() -> (
     tempfile::TempDir,
@@ -102,6 +106,11 @@ fn refresh_selector_distinguishes_fractional_rate_and_keep_waits_for_presentatio
     ui.rebuild(&view);
     ui.dispatch(&view);
     assert_eq!(ui.harness.focused_widget_id(), Some(ui.button("Revert")));
+    assert!(ids(&ui.harness).into_iter().any(|id| {
+        ui.harness
+            .access_node(id)
+            .is_some_and(|n| n.role() == Role::Dialog && n.is_modal())
+    }));
     let keep = ui.button("Keep changes");
     assert!(ui.harness.access_node(keep).unwrap().is_disabled());
     ui.activate(keep);
@@ -133,4 +142,24 @@ fn refresh_selector_distinguishes_fractional_rate_and_keep_waits_for_presentatio
         rx.try_recv().unwrap(),
         Request::Revert { token: 42 }
     ));
+}
+
+#[test]
+fn centered_confirmation_enter_reverts_instead_of_accepting_the_new_mode() {
+    let (_dir, mut state, mut rx) = setup();
+    state.display_layout.modes.snapshot.preview = Some(Preview {
+        token: 52,
+        output: state.settings.monitors[0].id.clone(),
+        ready: true,
+        seconds_remaining: 15,
+    });
+    let mut ui = Ui::new(state, view, (420, 230));
+    ui.dispatch(&view);
+    assert_eq!(ui.harness.focused_widget_id(), Some(ui.button("Revert")));
+    key(&mut ui, NamedKey::Enter, view);
+    assert!(matches!(
+        rx.try_recv().unwrap(),
+        Request::Revert { token: 52 }
+    ));
+    assert!(rx.try_recv().is_err());
 }
