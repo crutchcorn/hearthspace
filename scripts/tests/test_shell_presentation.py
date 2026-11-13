@@ -229,6 +229,39 @@ class PopupPresentationTests(unittest.TestCase):
                         {"width": expected + 20}, {"logical_width": width}
                     )
 
+    def test_power_fit_uses_the_last_available_action(self):
+        node = {"bounds": {"x": 20, "y": 70, "width": 160, "height": 64}}
+        for available, last in [
+            ({"Log off"}, "Log off"),
+            ({"Log off", "Reboot"}, "Reboot"),
+            ({"Log off", "Reboot", "Turn off"}, "Turn off"),
+        ]:
+            with self.subTest(available=available):
+                smoke = Mock()
+
+                def until(_label, condition):
+                    self.assertIsNone(condition())
+                    return condition()
+
+                smoke.until.side_effect = until
+                with (
+                    patch.object(
+                        presentation.checks, "panel", return_value=self.surface
+                    ),
+                    patch.object(
+                        presentation.checks,
+                        "elements",
+                        side_effect=lambda _smoke, name, available=available, **_kw: (
+                            [node] if name in available else []
+                        ),
+                    ) as elements,
+                ):
+                    self.assertEqual(
+                        presentation.fitted(smoke, "power", "Log off", {"scale": 2}),
+                        (self.surface, 13),
+                    )
+                    elements.assert_any_call(smoke, last, role=None)
+
 
 class SearchSelectionTests(unittest.TestCase):
     def test_selection_requires_exactly_one_semantically_selected_result(self):
