@@ -6,8 +6,9 @@ use smithay::{
     utils::{Physical, Size},
 };
 use tracing::{debug, info, warn};
+mod fallback;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub(in crate::compositor::udev) struct KmsOutputTarget {
     pub(in crate::compositor::udev) connector: connector::Handle,
     pub(in crate::compositor::udev) crtc: crtc::Handle,
@@ -16,6 +17,19 @@ pub(in crate::compositor::udev) struct KmsOutputTarget {
     connector_name: String,
     connector_label: String,
     physical_size_mm: (i32, i32),
+}
+
+// Catalog changes are observations, not scanout configuration changes. Keep
+// healthy buffers/page flips when only additional available modes change.
+impl PartialEq for KmsOutputTarget {
+    fn eq(&self, other: &Self) -> bool {
+        self.connector == other.connector
+            && self.crtc == other.crtc
+            && self.mode == other.mode
+            && self.connector_name == other.connector_name
+            && self.connector_label == other.connector_label
+            && self.physical_size_mm == other.physical_size_mm
+    }
 }
 
 impl KmsOutputTarget {
@@ -81,6 +95,7 @@ pub(in crate::compositor::udev) fn discover_outputs(
     path: &std::path::Path,
     identity: &str,
     names: &mut ConnectorNames,
+    allow_fallback: bool,
 ) -> Result<(Vec<KmsOutputTarget>, bool), Box<dyn std::error::Error>> {
     let resources = drm_fd.resource_handles()?;
 
@@ -152,11 +167,15 @@ pub(in crate::compositor::udev) fn discover_outputs(
                     .unwrap_or((0, 0));
                 let connector_label =
                     format!("{}-{}", info.interface().as_str(), info.interface_id());
+                let mut modes = info.modes().to_vec();
+                if allow_fallback {
+                    fallback::append(drm_fd, *connector_handle, info.interface(), &mut modes)?;
+                }
                 targets.push(KmsOutputTarget {
                     connector: *connector_handle,
                     crtc,
                     mode: *mode,
-                    modes: info.modes().to_vec(),
+                    modes,
                     connector_name: names.assign(identity, &connector_label),
                     connector_label,
                     physical_size_mm,

@@ -37,7 +37,7 @@ pub(in crate::compositor::udev) fn create_udev_device(
             .ok_or("native renderer has no framebuffer formats")?
             .into_iter()
             .collect();
-        let (targets, complete) = discover_outputs(&drm_fd, &path, &identity, names)?;
+        let (targets, complete) = discover_outputs(&drm_fd, &path, &identity, names, false)?;
         Ok((formats, targets, complete))
     })();
     let (renderer_formats, output_targets, discovery_complete) = match initialized {
@@ -63,6 +63,7 @@ pub(in crate::compositor::udev) fn create_udev_device(
         node,
         source: None,
         active,
+        supports_custom_modes: false,
         recovery_needed: true,
         discovery_complete,
         configuration_pending: false,

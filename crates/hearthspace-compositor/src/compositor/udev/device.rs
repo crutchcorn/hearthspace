@@ -30,6 +30,7 @@ pub(super) struct UdevDevice {
     pub(super) node: DrmNode,
     pub(super) source: Option<RegistrationToken>,
     pub(super) active: bool,
+    pub(super) supports_custom_modes: bool,
     pub(super) recovery_needed: bool,
     pub(super) discovery_complete: bool,
     pub(super) configuration_pending: bool,
@@ -65,7 +66,13 @@ impl UdevDevice {
         &self,
         names: &mut ConnectorNames,
     ) -> Result<(Vec<KmsOutputTarget>, bool), Box<dyn std::error::Error>> {
-        targets::discover_outputs(&self.drm_fd, &self.path, &self.identity, names)
+        targets::discover_outputs(
+            &self.drm_fd,
+            &self.path,
+            &self.identity,
+            names,
+            self.supports_custom_modes,
+        )
     }
 
     pub(super) fn rebuild_output_surfaces(&mut self, targets: Vec<KmsOutputTarget>) {

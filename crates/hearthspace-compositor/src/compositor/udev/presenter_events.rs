@@ -41,7 +41,15 @@ fn handle_event(data: &mut CalloopData, token: DeviceToken, event: PresenterEven
         return;
     }
     match event {
-        PresenterEvent::Ready => {}
+        PresenterEvent::Ready { atomic } => {
+            backend
+                .opened_devices
+                .get_mut(&token.id)
+                .unwrap()
+                .supports_custom_modes = atomic;
+            let sync = backend.handle_device_changed(token.id);
+            apply_connector_sync(data, sync);
+        }
         PresenterEvent::Configured {
             key,
             control_generation,

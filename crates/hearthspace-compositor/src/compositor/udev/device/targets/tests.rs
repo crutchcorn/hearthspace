@@ -56,6 +56,17 @@ fn display_modes_confirmed_timing_is_selected_exactly_and_missing_timing_falls_b
         connector_label: "eDP-1".into(),
         physical_size_mm: (0, 0),
     }];
+    let mut catalog_change = outputs[0].clone();
+    catalog_change.modes = vec![native];
+    assert_eq!(
+        catalog_change, outputs[0],
+        "catalog-only changes must preserve healthy scanout"
+    );
+    catalog_change.mode = fractional;
+    assert_ne!(
+        catalog_change, outputs[0],
+        "selected timing changes must reconfigure scanout"
+    );
     let mut settings = State::default();
     settings.selected.insert(
         "eDP-1".into(),

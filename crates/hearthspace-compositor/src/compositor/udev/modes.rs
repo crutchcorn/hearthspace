@@ -59,11 +59,18 @@ impl UdevBackendState {
         if !self.session_active || !self.session.is_active() {
             return;
         }
+        // A rollback must not inherit an exhausted retry budget from the
+        // rejected preview. Give each requested configuration its own recovery.
+        if let Some(source) = self.recovery_source.take() {
+            self.loop_handle.remove(source);
+        }
+        self.recovery_exhausted = false;
         let ids: Vec<_> = self.opened_devices.keys().copied().collect();
         for id in ids {
             self.refresh_device(id, false);
         }
         self.refresh_backend_state();
+        self.schedule_recovery_timer();
     }
 
     fn revert_mode(&mut self, message: &str) {
@@ -173,7 +180,7 @@ impl CalloopData {
         if text != "display-modes" && !text.starts_with("display-mode ") {
             return None;
         }
-        if !self.capture_active() || self.state.session_locked() {
+        if self.state.session_locked() {
             return Some(ControlReply::Err(
                 "Display controls are unavailable while the session is inactive or locked.".into(),
             ));
@@ -185,6 +192,13 @@ impl CalloopData {
                 ControlReply::Err("Mode changes require the native display backend.".into())
             });
         };
+        // Reconfiguration temporarily removes capture surfaces. Admission is
+        // seat ownership, not screenshot readiness: Revert must remain usable.
+        if !backend.session_active || !backend.session.is_active() {
+            return Some(ControlReply::Err(
+                "Display controls require the active seat.".into(),
+            ));
+        }
         if let Some(payload) = text.strip_prefix("display-mode ") {
             let request = match serde_json::from_str(payload) {
                 Ok(v) => v,

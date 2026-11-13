@@ -138,7 +138,9 @@ fn run_inner(
         cursor: None,
         done: false,
     };
-    worker.emit(PresenterEvent::Ready);
+    worker.emit(PresenterEvent::Ready {
+        atomic: worker.drm.is_atomic(),
+    });
     let mut dispatch_failed = false;
     while !worker.done {
         worker.turn();
