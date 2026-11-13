@@ -33,6 +33,7 @@ pub(crate) fn app_logic(state: &mut SettingsApp) -> impl WidgetView<SettingsApp>
     let content = fork(content, crate::background_shader_status::task());
     let content = fork(content, crate::frame_settings::task());
     let content = fork(content, crate::settings_backend::task());
+    let content = fork(content, crate::display_modes::task());
     let content = fork(content, crate::wayland_outputs::task());
     let content = fork(
         fork(

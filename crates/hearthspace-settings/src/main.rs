@@ -10,6 +10,7 @@ mod background_shader_status;
 mod background_thumbnail;
 mod background_view;
 mod cli;
+mod display_modes;
 mod display_view;
 mod favorites;
 mod favorites_icons;

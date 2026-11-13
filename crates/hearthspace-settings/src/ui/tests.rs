@@ -374,3 +374,6 @@ fn every_settings_page_fits_the_compact_minimum_and_desktop_breakpoint() {
         }
     }
 }
+
+#[path = "tests/display_modes.rs"]
+mod display_modes;

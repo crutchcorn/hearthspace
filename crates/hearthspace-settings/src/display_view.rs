@@ -19,8 +19,14 @@ use crate::{
     typography::label,
 };
 
+mod modes;
+
 pub(crate) fn view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> {
+    if state.display_layout.modes.snapshot.preview.is_some() {
+        return modes::confirmation(state).unwrap();
+    }
     flex_col((
+        modes::confirmation(state),
         flex_row((
             FlexSpacer::Flex(1.0),
             sized_box(monitor_layout_editor()).width(xilem::masonry::layout::Dim::FitContent),
@@ -101,6 +107,24 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
                 }
             },
         );
+    let (resolution, refresh_control) = modes::controls(state, output_id).unwrap_or_else(|| {
+        (
+            current_option(
+                palette,
+                "Resolution",
+                format!("{} × {}", monitor.width, monitor.height),
+                true,
+            )
+            .boxed(),
+            current_option(
+                palette,
+                "Refresh rate",
+                refresh,
+                live_output.and_then(|o| o.refresh_millihertz).is_some(),
+            )
+            .boxed(),
+        )
+    });
     flex_col((
         flex_row((
             components::settings_surface(
@@ -134,27 +158,11 @@ fn monitor_details_view(state: &SettingsApp) -> Box<AnyWidgetView<SettingsApp>> 
         components::settings_surface(
             sized_box(
                 flex_col((
-                    row(
-                        "Resolution",
-                        current_option(
-                            palette,
-                            "Resolution",
-                            format!("{} × {}", monitor.width, monitor.height),
-                            true,
-                        ),
-                    ),
+                    row("Resolution", resolution),
                     divider(palette),
                     row("Scale", scale),
                     divider(palette),
-                    row(
-                        "Refresh rate",
-                        current_option(
-                            palette,
-                            "Refresh rate",
-                            refresh,
-                            live_output.and_then(|o| o.refresh_millihertz).is_some(),
-                        ),
-                    ),
+                    row("Refresh rate", refresh_control),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Stretch)
                 .gap(0.0.px()),

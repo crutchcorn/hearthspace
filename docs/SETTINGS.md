@@ -6,7 +6,7 @@ Open **Hearthspace Settings** from Apps List to adjust the desktop:
   or Olive accent. The default is Light with Orange. Application artwork keeps
   its own colors; applications decide how to use the published theme preference.
 - **Displays:** arrange connected outputs and choose an integer scale from
-  100–400%. Resolution and refresh rate are reported values, not mode selectors.
+  100–400%. Native sessions can select advertised resolutions and refresh rates.
 - **Background:** choose a local photo or restore Canvas dots. Repeat with
   canvas tiles and moves the photo; Stretch fills the output, Contain shows the
   whole image, and Cover fills it while cropping. The latter three stay still
@@ -440,3 +440,30 @@ New settings should pass through the same ownership boundary:
 - Add tests in the IPC crate and settings daemon for defaults, parsing, saving, and errors.
 
 Do not make UI clients responsible for file migrations or partial writes. If the persisted format changes, `hearthspace-settingsd` should own compatibility because every settings consumer already talks through it.
+
+
+## Resolution and refresh-rate previews
+
+In a native session, Displays lists the DRM modes reported by each connected
+monitor. Resolution choices select the closest available refresh rate to the
+current one; Refresh rate lists only rates supported at the selected resolution.
+Fractional rates are retained in millihertz. The compositor validates the complete
+timing identity again before applying a request. Nested and headless sessions
+report their current mode without providing hardware mode switching.
+
+After selecting a mode, the display editor becomes a **Keep these display
+settings?** confirmation. **Revert** receives initial keyboard focus. **Keep
+changes** is enabled only after the native presenter has completed a frame in the
+new configuration. Confirmation then has a fixed 15-second deadline; polling or
+input cannot extend it. If presentation does not succeed within five seconds,
+the compositor restores the previous mode automatically. Closing Settings,
+losing the connection, or navigating away cannot disable that compositor-owned
+timer. Locking, losing the active VT, or disconnecting/replacing the target also
+reverts the preview.
+
+Only **Keep changes** writes the selection to
+`$XDG_CONFIG_HOME/hearthspace/display-modes.json` (or
+`~/.config/hearthspace/display-modes.json`). Confirmed selections are restored
+when the same connector is discovered again. If a saved timing is no longer
+advertised, discovery falls back to the monitor's first/default mode. Arrangement
+and scale continue to use the settings service's existing display-layout storage.

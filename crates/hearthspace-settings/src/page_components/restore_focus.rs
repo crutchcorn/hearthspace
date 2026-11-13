@@ -20,12 +20,25 @@ pub(crate) fn restore_focus_after_close<V: WidgetView<SettingsApp>>(
     inner: V,
     open: bool,
 ) -> RestoreFocus<V> {
-    RestoreFocus { inner, open }
+    RestoreFocus {
+        inner,
+        open,
+        initial_focus: false,
+    }
+}
+
+pub(crate) fn focus_on_mount<V: WidgetView<SettingsApp>>(inner: V) -> RestoreFocus<V> {
+    RestoreFocus {
+        inner,
+        open: false,
+        initial_focus: true,
+    }
 }
 
 pub(crate) struct RestoreFocus<V> {
     inner: V,
     open: bool,
+    initial_focus: bool,
 }
 impl<V> ViewMarker for RestoreFocus<V> {}
 const CONTENT: ViewId = ViewId::new(0);
@@ -41,6 +54,7 @@ impl<V: WidgetView<SettingsApp>> View<SettingsApp, (), ViewCtx> for RestoreFocus
         (
             ctx.create_pod(FocusScope {
                 inner: inner.new_widget.erased().to_pod(),
+                initial_focus: self.initial_focus,
             }),
             view_state,
         )
@@ -115,6 +129,7 @@ fn return_to_control(mut child: WidgetMut<'_, dyn Widget>) {
 
 pub(crate) struct FocusScope {
     inner: WidgetPod<dyn Widget>,
+    initial_focus: bool,
 }
 impl FocusScope {
     fn child_mut<'a>(this: &'a mut WidgetMut<'_, Self>) -> WidgetMut<'a, dyn Widget> {
@@ -152,6 +167,9 @@ impl Widget for FocusScope {
         ctx.run_layout(&mut self.inner, size);
         ctx.place_child(&mut self.inner, Point::ORIGIN);
         ctx.derive_baselines(&self.inner);
+        if std::mem::take(&mut self.initial_focus) {
+            ctx.mutate_child_later(&mut self.inner, return_to_control);
+        }
     }
     fn paint(&mut self, _: &mut PaintCtx<'_>, _: &PropertiesRef<'_>, _: &mut Painter<'_>) {}
     fn accessibility_role(&self) -> Role {
