@@ -30,6 +30,11 @@ Individual maximized windows must be restored before moving or resizing them.
 Dragging a selection of multiple windows moves each maximized member's visible
 bounds and saved restore position together.
 
+Client-drawn X11 title bars, including Chromium/Electron applications, can hand
+off dragging and resizing even when they omit the initiating button number.
+Hearthspace still requires a live left-button press on that window; an old
+request or a right-button press cannot begin the operation.
+
 The server title bar's expand button enters **focused view** instead. The window
 fills its output at native scale, retains its title bar, and uses square corners.
 The canvas stays still while the application receives input. Click the button
