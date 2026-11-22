@@ -90,6 +90,15 @@ impl App {
         if self.is_layout_surface(index) {
             return self.layout_surface_visible(index);
         }
+        // Desktop shortcuts and live pinned apps keep their original roles,
+        // but on the frame they obey the same visibility as the other parts.
+        // Keep fullscreen owners and canvas preview sources on their own paths.
+        if !self.canvas_preview_active()
+            && !self.windows[index].presentation.fullscreen
+            && self.layout_target_on_frame(index)
+        {
+            return self.layout_surface_visible(index);
+        }
         if self.is_window_switcher_caption(index) {
             return self.window_switcher_caption_visible(index);
         }

@@ -4,7 +4,7 @@ use super::*;
 const APP: [u8; 4] = [190, 70, 20, 255];
 const ITEM: [u8; 4] = [20, 190, 70, 255];
 
-fn assert_color(
+pub(super) fn assert_color(
     compositor: &HeadlessCompositor,
     rect: (usize, usize, usize, usize),
     color: [u8; 4],

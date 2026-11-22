@@ -58,15 +58,16 @@ impl App {
             .is_some_and(|(output, id)| self.frame_group_material(&output, &id))
     }
 
-    pub(in crate::compositor) fn frame_widget_has_material(&self, index: usize) -> bool {
-        self.frame_widget_identity(index)
-            .is_some_and(|(output, id)| {
-                !self.frame_widget_merged(&output, &id)
-                    && self
-                        .frame_target_for_window(index)
-                        .and_then(|target| self.frame_placed(&target))
-                        .is_some_and(|p| p.group.is_none())
-            })
+    pub(in crate::compositor) fn frame_control_has_material(&self, index: usize) -> bool {
+        let widget = self
+            .frame_widget_identity(index)
+            .is_some_and(|(output, id)| !self.frame_widget_merged(&output, &id));
+        let shortcut = self.desktop_id(index).is_some() && self.layout_target_on_frame(index);
+        (widget || shortcut)
+            && self
+                .frame_target_for_window(index)
+                .and_then(|target| self.frame_placed(&target))
+                .is_some_and(|p| p.group.is_none())
     }
 
     pub(super) fn compact_bar_for_window(&self, index: usize) -> Option<(String, String)> {

@@ -73,6 +73,11 @@ impl App {
         let mut live = HashSet::new();
         let mut regions = Vec::new();
         for (index, window) in self.windows.iter().enumerate() {
+            // Frame materials already use the shared window-glass sampler.
+            // Group members are transparent: only their backing owns a blur.
+            if self.is_layout_surface(index) {
+                continue;
+            }
             let corner = self.shell_corner(index).is_some();
             // Overview uses the shared 40px window-glass backdrop, including
             // photo-aware saturation, rather than the lighter corner blur.
