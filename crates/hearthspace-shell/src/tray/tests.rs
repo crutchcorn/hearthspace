@@ -155,3 +155,6 @@ fn menu_semantics_preserve_radio_separator_hidden_and_disabled_ancestry() {
     assert_eq!(parsed.items[3].toggle, Some(TrayToggle::Radio(true)));
     assert!(parsed.items[2].separator);
 }
+
+#[path = "steam_regressions.rs"]
+mod steam_regressions;

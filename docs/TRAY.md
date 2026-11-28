@@ -9,7 +9,9 @@ Wayland shell surfaces.
 
 ## Using tray apps
 
-- Click an icon to activate its application. Menu-only indicators open their menu.
+- Click an icon to activate its application. Menu-only indicators open their menu. Older menu-only
+  indicators, including Steam, may omit the activation method; both mouse
+  buttons then open the exported menu, even without a main application window.
 - Right-click to open an application's exported menu. Applications without an
   exported menu receive the protocol's context-menu request.
 - Middle-click is delivered to applications that support it. Scrolling moves an

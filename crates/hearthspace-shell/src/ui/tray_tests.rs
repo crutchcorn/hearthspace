@@ -334,3 +334,29 @@ mod live;
 
 #[path = "tray_strip_tests.rs"]
 mod strip;
+
+#[test]
+fn steam_regressions_menu_only_indicator_opens_its_menu_with_either_mouse_button() {
+    fn icon(
+        state: &ShellState,
+    ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
+        sized_box(tray_button::icon(
+            "eDP-1",
+            &state.tray.snapshot.items[0],
+            state.appearance.palette,
+        ))
+    }
+    for button in [PointerButton::Primary, PointerButton::Secondary] {
+        let mut state = state();
+        state.tray.snapshot.items[0].item_is_menu = true;
+        let mut ui = Ui::new(state, icon, (34, 34));
+        let id = name(&ui, "App 1");
+        ui.harness.mouse_click_on(id, Some(button));
+        ui.dispatch(&icon);
+        assert!(
+            ui.state.outputs[0].tray.open,
+            "{button:?} must open a menu-only indicator"
+        );
+        assert_eq!(ui.state.outputs[0].tray.item, Some(key(1)));
+    }
+}
