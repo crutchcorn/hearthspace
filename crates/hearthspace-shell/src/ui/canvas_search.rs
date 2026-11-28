@@ -149,7 +149,8 @@ pub(super) fn activate(state: &mut ShellState, id: Option<&str>) {
         format!(
             "canvas-search-activate {}",
             serde_json::json!({
-                "session": state.canvas_search.snapshot.session, "id": id
+                "session": state.canvas_search.snapshot.session, "id": id,
+                "query": state.canvas_search.query
             })
         ),
     );

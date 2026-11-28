@@ -35,6 +35,7 @@ struct Session {
     view: Rect,
     anchor: Point,
     query: String,
+    calculation: Option<String>,
     field: Rect,
     above: bool,
     selected: Option<String>,
@@ -190,6 +191,7 @@ impl App {
                 y: view.y + view.height / 3.,
             }),
             query: String::new(),
+            calculation: None,
             field: Rect::default(),
             above: false,
             selected: None,
@@ -299,6 +301,11 @@ impl App {
             .find(|r| r.id == id)
             .cloned()
             .ok_or("search result is unavailable")?;
+        if result.kind == "calculation" {
+            self.copy_clipboard_text(&result.title)?;
+            self.close_canvas_search(true);
+            return Ok(());
+        }
         let output = s.output.clone();
         let view = s.view;
         self.close_canvas_search(false);

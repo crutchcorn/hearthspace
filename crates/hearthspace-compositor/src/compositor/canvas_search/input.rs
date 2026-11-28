@@ -201,6 +201,7 @@ mod sampling_tests {
             view: Rect::default(),
             anchor: Point { x: 0., y: 0. },
             query: String::new(),
+            calculation: None,
             field: Rect::default(),
             above: false,
             selected: None,

@@ -24,7 +24,7 @@ pub fn canvas_search_from_app_id(app_id: &str) -> Option<(u64, Option<String>)> 
     Some((session, output))
 }
 
-/// Session zero reserves a persistent, initially hidden control/tool preview.
+/// Session zero reserves a persistent, initially hidden search card.
 pub fn canvas_search_result_app_id(session: u64, id: &str) -> String {
     format!(
         "{RESULT_ID}.session-{session}.item-{}",
@@ -41,6 +41,7 @@ pub fn canvas_search_result_from_app_id(app_id: &str) -> Option<(u64, String)> {
     }
     let id = String::from_utf8(hex_decode(id)?).ok()?;
     if session == 0
+        && id != super::calculator::RESULT_ID
         && !["control:", "tool:"]
             .iter()
             .any(|prefix| id.strip_prefix(prefix).is_some_and(|name| !name.is_empty()))

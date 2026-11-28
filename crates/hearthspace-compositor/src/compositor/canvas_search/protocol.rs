@@ -195,7 +195,18 @@ impl CalloopData {
                     return Err("invalid canvas search query".into());
                 }
                 if app.canvas_search.session.as_ref().unwrap().query != value.query {
-                    app.canvas_search.session.as_mut().unwrap().selected = None;
+                    let session = app.canvas_search.session.as_mut().unwrap();
+                    session.selected = None;
+                    session.calculation =
+                        hearthspace_common::canvas_search::calculator::answer(&value.query);
+                    // A held click belongs to the displayed answer, not its replacement.
+                    for (target, _) in app.canvas_search.buttons.values_mut() {
+                        if target.as_deref()
+                            == Some(hearthspace_common::canvas_search::calculator::RESULT_ID)
+                        {
+                            *target = Some(String::new());
+                        }
+                    }
                 }
                 app.canvas_search.session.as_mut().unwrap().query = value.query;
                 app.rebuild_canvas_search();
@@ -246,10 +257,16 @@ impl CalloopData {
                 struct Activate {
                     session: u64,
                     id: Option<String>,
+                    query: Option<String>,
                 }
                 let v: Activate =
                     serde_json::from_str(value).map_err(|_| "invalid canvas search activation")?;
                 app.check_canvas_search_session(v.session)?;
+                if v.query.as_ref().is_some_and(|query| {
+                    query != &app.canvas_search.session.as_ref().unwrap().query
+                }) {
+                    return Err("search query changed; try again".into());
+                }
                 app.activate_canvas_search(v.id)
             } else if let Some(value) = text.strip_prefix("canvas-search-desktop-register ") {
                 #[derive(serde::Deserialize)]

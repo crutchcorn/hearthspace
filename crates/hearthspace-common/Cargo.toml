@@ -6,6 +6,7 @@ rust-version = "1.99.0"
 license = "Apache-2.0"
 
 [dependencies]
+fend-core = "1.5.9"
 serde = { version = "1.0.229", features = ["derive"] }
 url = "2.5.9"
 
