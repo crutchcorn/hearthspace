@@ -1,4 +1,5 @@
 //! Independently owned desktop widget copies; placement stays with the compositor.
+mod catalog;
 mod identity;
 mod preferences;
 mod store;

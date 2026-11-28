@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::frame_layout::fixture;
 
 #[test]
 fn original_tray_menu_anchors_to_system_tray_on_its_output_and_delivers_once() {
@@ -14,7 +15,7 @@ fn original_tray_menu_anchors_to_system_tray_on_its_output_and_delivers_once() {
     let anchor: serde_json::Value =
         serde_json::from_str(request.command.strip_prefix("frame-popup-anchor ").unwrap()).unwrap();
     assert_eq!(anchor["output"], "DP-1");
-    assert_eq!(anchor["target"]["id"], "tray");
+    assert_eq!(anchor["target"]["id"], fixture::id(&state, "DP-1", "tray"));
     assert_eq!(
         anchor["app_id"],
         hearthspace_common::tray_menu_app_id_for_output("DP-1")

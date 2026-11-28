@@ -1,5 +1,9 @@
 use super::*;
 
+fn widget(layout: &FrameLayout, kind: &str) -> LayoutTarget {
+    LayoutTarget::widget(layout.widget_id(kind).expect("fixture widget"))
+}
+
 const VIEW: Rect = Rect {
     x: 0.0,
     y: 0.0,
@@ -10,7 +14,7 @@ const VIEW: Rect = Rect {
 #[test]
 fn separate_move_and_regroup_preserves_members_and_destination_order() {
     let mut layout = FrameLayout::default();
-    let wifi = LayoutTarget::widget("wifi");
+    let wifi = widget(&layout, "wifi");
     layout.set_placement(
         &wifi,
         ObjectPlacement::Canvas {
@@ -36,7 +40,7 @@ fn separate_move_and_regroup_preserves_members_and_destination_order() {
         Some((Some(500.0), Some(200.0), Some(120.0), Some(54.0)))
     );
     let group = layout
-        .merge(&wifi, &LayoutTarget::widget("volume"), true)
+        .merge(&wifi, &widget(&layout, "volume"), true)
         .unwrap();
     assert_eq!(group.id, "system");
     assert_eq!(layout.groups["system"].members[1], wifi);
@@ -50,7 +54,7 @@ fn separate_move_and_regroup_preserves_members_and_destination_order() {
 #[test]
 fn mixed_groups_dissolve_without_hiding_apps_or_losing_the_tools() {
     let mut layout = FrameLayout::default();
-    let tools = LayoutTarget::widget("tools");
+    let tools = widget(&layout, "tools");
     let window = LayoutTarget::new(TargetKind::Window, "42");
     let item = LayoutTarget::new(TargetKind::Item, "app:terminal");
     let group = layout.merge(&window, &tools, false).unwrap();
@@ -66,15 +70,15 @@ fn mixed_groups_dissolve_without_hiding_apps_or_losing_the_tools() {
     assert_eq!(layout.validate(), Ok(()));
     layout.set_allow_hide_tools(true);
     layout.set_placement(&tools, ObjectPlacement::Hidden);
-    assert_eq!(layout.placement(&tools), ObjectPlacement::Hidden);
+    assert!(layout.widget_kind(&tools.id).is_none());
     layout.set_allow_hide_tools(false);
-    assert!(layout.placement(&tools).is_frame());
+    assert!(layout.widget_kind(&tools.id).is_none());
 }
 
 #[test]
 fn closing_grouped_window_leaves_remaining_member_at_same_edge() {
     let mut layout = FrameLayout::default();
-    let notifications = LayoutTarget::widget("notifications");
+    let notifications = widget(&layout, "notifications");
     let window = LayoutTarget::new(TargetKind::Window, "42");
     layout.merge(&window, &notifications, false).unwrap();
     layout.remove_target(&window);
@@ -87,32 +91,31 @@ fn closing_grouped_window_leaves_remaining_member_at_same_edge() {
 }
 
 #[test]
-fn layout_round_trip_retains_hidden_widgets_groups_and_clock_options() {
+fn layout_round_trip_retains_removals_groups_and_clock_options() {
     let mut layout = FrameLayout::default();
-    layout.set_placement(&LayoutTarget::widget("battery"), ObjectPlacement::Hidden);
+    layout.set_placement(&widget(&layout, "battery"), ObjectPlacement::Hidden);
     layout.clock_date_format = ClockDateFormat::Long;
-    layout.toggle_expanded("wifi");
+    let wifi = layout.widget_id("wifi").unwrap();
+    layout.toggle_expanded(&wifi);
     let saved = serde_json::to_string(&layout).unwrap();
     let restored: FrameLayout = serde_json::from_str(&saved).unwrap();
     assert_eq!(restored, layout);
     assert_eq!(restored.validate(), Ok(()));
-    assert!(restored.is_expanded("wifi"));
+    assert!(restored.is_expanded(&wifi));
+    assert!(restored.widget_id("battery").is_none());
 }
 
 #[test]
 fn invalid_layout_cannot_duplicate_members_or_hide_protected_tools() {
     let mut layout = FrameLayout::default();
-    layout
-        .groups
-        .get_mut("system")
-        .unwrap()
-        .members
-        .push(LayoutTarget::widget("clock"));
+    let clock = widget(&layout, "clock");
+    layout.groups.get_mut("system").unwrap().members.push(clock);
     assert!(layout.validate().is_err());
     let mut layout = FrameLayout::default();
+    let tools = widget(&layout, "tools");
     layout
         .placements
-        .insert("widget:tools".into(), ObjectPlacement::Hidden);
+        .insert(tools.key(), ObjectPlacement::Hidden);
     assert!(layout.validate().is_err());
     assert!(LayoutTarget::from_key("drawing:1").is_none());
     assert!(LayoutTarget::from_key("widget:unknown").is_none());
@@ -232,9 +235,10 @@ fn frame_snap_uses_global_grid_but_preserves_exact_corners() {
 #[test]
 fn native_layout_surface_ids_round_trip_unusual_outputs_and_group_names() {
     let output = Some("card0/DP-1 🖥");
+    let wifi = FrameLayout::default().widget_id("wifi").unwrap();
     assert_eq!(
-        frame_widget_from_app_id(&frame_widget_app_id(output, "wifi")),
-        Some((output.map(str::to_string), "wifi".into()))
+        frame_widget_from_app_id(&frame_widget_app_id(output, &wifi)),
+        Some((output.map(str::to_string), wifi.clone()))
     );
     assert_eq!(
         frame_group_from_app_id(&frame_group_app_id(output, "one:two /三")),
@@ -265,10 +269,11 @@ fn native_layout_surface_ids_round_trip_unusual_outputs_and_group_names() {
 #[test]
 fn native_layout_surface_ids_keep_gpu_qualified_outputs_and_distinct_families() {
     let output = Some("eDP-1@%2Fsys%2Fdevices%2Fpci0000:00%2F0000:00:08.1%2F0000:c6:00.0");
+    let wifi = FrameLayout::default().widget_id("wifi").unwrap();
     let targets = [
-        frame_widget_app_id(output, "wifi"),
-        frame_group_app_id(output, "wifi"),
-        frame_group_grip_app_id(output, "wifi"),
+        frame_widget_app_id(output, &wifi),
+        frame_group_app_id(output, &wifi),
+        frame_group_grip_app_id(output, &wifi),
     ];
     type TargetIdentity = (Option<String>, String);
     let target_parsers: [fn(&str) -> Option<TargetIdentity>; 3] = [
@@ -280,7 +285,7 @@ fn native_layout_surface_ids_keep_gpu_qualified_outputs_and_distinct_families() 
         for (candidate, id) in targets.iter().enumerate() {
             assert_eq!(
                 parse(id),
-                (family == candidate).then(|| (output.map(str::to_owned), "wifi".into())),
+                (family == candidate).then(|| (output.map(str::to_owned), wifi.clone())),
                 "target family {family} parsing {id}"
             );
         }

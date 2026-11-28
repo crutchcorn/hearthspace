@@ -190,6 +190,7 @@ fn canvas_frame_output_moves_preserve_identity_and_preferences() {
         .add_widget(WidgetKind::Clock, canvas("output-a", 100.0))
         .unwrap();
     let preferences = Preferences {
+        hide_when_unavailable: false,
         expanded_details: true,
         clock_date_format: Some("%F".to_owned()),
     };

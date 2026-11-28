@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::frame_layout::fixture;
 use crate::ui::window_catalog::RunningWindow;
 
 fn apps(
@@ -7,11 +8,11 @@ fn apps(
     sized_box(widgets::content(
         state,
         &state.outputs[0],
-        "apps",
+        &fixture::id(state, state.outputs[0].key(), "apps"),
         false,
         false,
         Default::default(),
-        &state.frame_layout.chains[&widget_key("test", "apps")],
+        &state.frame_layout.chains[&fixture::key(state, "test", "apps")],
     ))
 }
 
@@ -26,8 +27,10 @@ fn compact_running_apps_page_inside_remaining_bar_width_and_keep_launcher_reacha
             focused: false,
         })
         .collect();
+    let instance = fixture::id(&state, "test", "apps");
     state.frame_layout.snapshot.outputs[0].widgets.push(Widget {
-        id: "apps".into(),
+        id: instance,
+        kind: "apps".into(),
         merged: true,
         rect: Rect {
             width: 140.0,

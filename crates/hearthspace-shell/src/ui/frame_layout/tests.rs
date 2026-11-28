@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::frame_layout::fixture;
 use crate::ui::test_support::{Ui, ids};
 use hearthspace_common::frame_layout::{FrameEdge, ObjectPlacement, TargetKind};
 use xilem::{WidgetView, masonry::accesskit::Role, view::sized_box};
@@ -44,11 +45,11 @@ fn state() -> ShellState {
 fn tools(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    let chain = &state.frame_layout.chains[&widget_key("test", "tools")];
+    let chain = &state.frame_layout.chains[&fixture::key(state, "test", "tools")];
     let inner = widgets::content(
         state,
         &state.outputs[0],
-        "tools",
+        &fixture::id(state, state.outputs[0].key(), "tools"),
         false,
         false,
         Default::default(),
@@ -58,7 +59,7 @@ fn tools(
         inner,
         chain.clone(),
         "test".into(),
-        LayoutTarget::widget("tools"),
+        fixture::target(state, "test", "tools"),
         state.frame_layout.snapshot.focus_request.clone(),
     ))
 }
@@ -82,7 +83,7 @@ fn native_tab_traverses_toolbar_controls_then_requests_the_next_surface() {
     ui.state.frame_layout.snapshot.focus_request = Some(FocusRequest {
         serial: 1,
         output: "test".into(),
-        target: LayoutTarget::widget("tools"),
+        target: fixture::target(&ui.state, "test", "tools"),
         reverse: false,
     });
     ui.rebuild(&tools);
@@ -106,7 +107,10 @@ fn native_tab_traverses_toolbar_controls_then_requests_the_next_surface() {
         let request = requests.try_recv().unwrap();
         if let Some(value) = request.command.strip_prefix("frame-focus-region ") {
             let value: serde_json::Value = serde_json::from_str(value).unwrap();
-            assert_eq!(value["target"]["id"], "tools");
+            assert_eq!(
+                value["target"]["id"],
+                fixture::id(&ui.state, "test", "tools")
+            );
             assert!(value["rect"]["width"].as_f64().unwrap() > 0.0);
             revealed += 1;
         } else {
@@ -120,12 +124,15 @@ fn native_tab_traverses_toolbar_controls_then_requests_the_next_surface() {
     assert!(request.command.starts_with("frame-focus-next "));
     let value: serde_json::Value =
         serde_json::from_str(request.command.split_once(' ').unwrap().1).unwrap();
-    assert_eq!(value["target"]["id"], "tools");
+    assert_eq!(
+        value["target"]["id"],
+        fixture::id(&ui.state, "test", "tools")
+    );
     assert_eq!(value["reverse"], false);
     ui.state.frame_layout.snapshot.focus_request = Some(FocusRequest {
         serial: 2,
         output: "test".into(),
-        target: LayoutTarget::widget("tools"),
+        target: fixture::target(&ui.state, "test", "tools"),
         reverse: true,
     });
     ui.rebuild(&tools);
@@ -141,7 +148,7 @@ fn placement_inspector_sends_session_guarded_actions_and_real_date_choices() {
     let mut state = state();
     state.frame_layout.snapshot.selected = Some(Selection {
         output: "test".into(),
-        target: LayoutTarget::widget("clock"),
+        target: fixture::target(&state, "test", "clock"),
     });
     state.frame_layout.snapshot.selected_title = "Clock".into();
     let (sender, mut requests) = mpsc::channel(8);
@@ -257,15 +264,18 @@ fn confirmation_focuses_cancel_and_does_not_enable_hiding_tools_implicitly() {
 #[test]
 fn placing_or_locking_keeps_control_identities_but_removes_editor_and_private_selection() {
     let mut state = state();
-    let id = state.frame_layout.windows[&widget_key("test", "clock")];
+    let id = state.frame_layout.windows[&fixture::key(&state, "test", "clock")];
     let mut snapshot = state.frame_layout.snapshot.clone();
     snapshot.outputs[0].layout.set_placement(
-        &LayoutTarget::widget("clock"),
+        &fixture::target(&state, "test", "clock"),
         ObjectPlacement::frame(FrameEdge::Left, 0.5),
     );
     snapshot.revision += 1;
     apply(&mut state, snapshot);
-    assert_eq!(state.frame_layout.windows[&widget_key("test", "clock")], id);
+    assert_eq!(
+        state.frame_layout.windows[&fixture::key(&state, "test", "clock")],
+        id
+    );
     apply(
         &mut state,
         Snapshot {
@@ -273,7 +283,10 @@ fn placing_or_locking_keeps_control_identities_but_removes_editor_and_private_se
             ..Default::default()
         },
     );
-    assert_eq!(state.frame_layout.windows[&widget_key("test", "clock")], id);
+    assert_eq!(
+        state.frame_layout.windows[&fixture::key(&state, "test", "clock")],
+        id
+    );
     assert!(!state.frame_layout.visible);
     assert!(state.frame_layout.editor.is_none());
     assert!(state.frame_layout.snapshot.selected.is_none());

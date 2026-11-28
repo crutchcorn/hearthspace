@@ -2,6 +2,7 @@
 use super::navigation::{action, keys, query};
 use super::shell_panels::connect;
 use super::*;
+use crate::frame_widgets;
 use serde_json::{Value, json};
 #[path = "frame_layout/clock_format.rs"]
 mod clock_format;
@@ -133,7 +134,7 @@ fn frame_layout_drag_cancel_restores_whole_group_and_keeps_clicks_out_of_clients
         .unwrap()
         .to_owned();
     let wifi_surface = client.add(
-        hearthspace_common::frame_layout::frame_widget_app_id(Some(&output), "wifi"),
+        frame_widgets::app_id(&compositor, Some(&output), "wifi"),
         (44, 44),
         (0, 0),
         COLOR,
@@ -144,7 +145,7 @@ fn frame_layout_drag_cancel_restores_whole_group_and_keeps_clicks_out_of_clients
         .as_array()
         .unwrap()
         .iter()
-        .find(|w| w["id"] == "wifi")
+        .find(|w| w["kind"] == "wifi")
         .unwrap();
     let x = wifi["rect"]["x"].as_f64().unwrap() + 20.;
     let y = wifi["rect"]["y"].as_f64().unwrap() + 20.;
@@ -165,7 +166,7 @@ fn frame_layout_drag_cancel_restores_whole_group_and_keeps_clicks_out_of_clients
     command(
         &compositor,
         "ungroup",
-        json!({"kind":"widget","id":"wifi"}),
+        frame_widgets::target(&compositor, "wifi"),
         Value::Null,
     );
     client.resize(wifi_surface, (54, 54));
@@ -175,11 +176,9 @@ fn frame_layout_drag_cancel_restores_whole_group_and_keeps_clicks_out_of_clients
             .as_object()
             .unwrap()
             .values()
-            .any(|g| g["members"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|m| m["kind"] == "widget" && m["id"] == "wifi")),
+            .any(|g| g["members"].as_array().unwrap().iter().any(
+                |m| m["kind"] == "widget" && m["id"] == frame_widgets::id(&compositor, "wifi")
+            )),
         "detached control merged back: {separated}"
     );
     command(&compositor, "done", Value::Null, Value::Null);
@@ -246,7 +245,7 @@ fn frame_layout_toolbar_turns_during_drag_and_returns_to_a_row_on_canvas_drop() 
         .to_owned();
     let mut client = connect(&compositor);
     let tools = client.add(
-        hearthspace_common::frame_layout::frame_widget_app_id(Some(&output), "tools"),
+        frame_widgets::app_id(&compositor, Some(&output), "tools"),
         (194, 54),
         (0, 0),
         COLOR,
@@ -257,7 +256,7 @@ fn frame_layout_toolbar_turns_during_drag_and_returns_to_a_row_on_canvas_drop() 
         .as_array()
         .unwrap()
         .iter()
-        .find(|w| w["id"] == "tools")
+        .find(|w| w["kind"] == "tools")
         .unwrap();
     let x = tools_state["rect"]["x"].as_f64().unwrap() + 16.;
     let y = tools_state["rect"]["y"].as_f64().unwrap() + 20.;
@@ -269,7 +268,7 @@ fn frame_layout_toolbar_turns_during_drag_and_returns_to_a_row_on_canvas_drop() 
         .as_array()
         .unwrap()
         .iter()
-        .find(|w| w["id"] == "tools")
+        .find(|w| w["kind"] == "tools")
         .unwrap();
     assert_eq!(widget["orientation"], "vertical", "{vertical}");
     client.resize(tools, (54, 194));
@@ -280,11 +279,12 @@ fn frame_layout_toolbar_turns_during_drag_and_returns_to_a_row_on_canvas_drop() 
         .as_array()
         .unwrap()
         .iter()
-        .find(|w| w["id"] == "tools")
+        .find(|w| w["kind"] == "tools")
         .unwrap();
     assert_eq!(widget["orientation"], "horizontal", "{dropped}");
     assert_eq!(
-        dropped["outputs"][0]["layout"]["placements"]["widget:tools"]["surface"],
+        dropped["outputs"][0]["layout"]["placements"]
+            [format!("widget:{}", frame_widgets::id(&compositor, "tools"))]["surface"],
         "canvas"
     );
     assert!(client.presses().is_empty());

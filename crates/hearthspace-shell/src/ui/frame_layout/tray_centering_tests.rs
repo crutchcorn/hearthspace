@@ -1,11 +1,13 @@
 //! Check the production tray inside the surface allocation used by frame parts.
 use super::*;
+use crate::ui::frame_layout::fixture;
 use masonry::core::WindowEvent;
 
 fn grouped_state(vertical: bool, count: usize) -> ShellState {
     let mut state = tray_state(vertical);
     state.tray.snapshot.items.truncate(count);
-    let layout = &mut state.frame_layout.snapshot.outputs[0].layout;
+    let mut snapshot = state.frame_layout.snapshot.clone();
+    let layout = &mut snapshot.outputs[0].layout;
     *layout = Default::default();
     layout.set_placement(
         &LayoutTarget::new(TargetKind::Group, "system"),
@@ -18,6 +20,7 @@ fn grouped_state(vertical: bool, count: usize) -> ShellState {
             0.5,
         ),
     );
+    apply(&mut state, snapshot);
     state
 }
 
@@ -36,14 +39,14 @@ fn grouped_size(state: &ShellState) -> (f64, f64) {
 fn grouped_view(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    let chain = &state.frame_layout.chains[&widget_key("test", "tray")];
+    let chain = &state.frame_layout.chains[&fixture::key(state, "test", "tray")];
     let size = grouped_size(state);
     // Group members occupy their own 44px lane without standalone outer padding.
     sized_box(focus::boundary(
         sized_box(widgets::content(
             state,
             &state.outputs[0],
-            "tray",
+            &fixture::id(state, state.outputs[0].key(), "tray"),
             vertical(state),
             false,
             Default::default(),
@@ -52,7 +55,7 @@ fn grouped_view(
         .padding(0.0.px()),
         chain.clone(),
         "test".into(),
-        LayoutTarget::widget("tray"),
+        fixture::target(state, "test", "tray"),
         state.frame_layout.snapshot.focus_request.clone(),
     ))
     .width(size.0.px())
@@ -250,12 +253,10 @@ fn standalone_centering_survives_live_count_and_orientation_rebuilds() {
     rebuild_standalone(&mut ui, &view);
     assert_fitting_tray_centered(&ui, 3, false, 5.0);
 
+    let tray = fixture::target(&ui.state, "test", "tray");
     ui.state.frame_layout.snapshot.outputs[0]
         .layout
-        .set_placement(
-            &LayoutTarget::widget("tray"),
-            ObjectPlacement::frame(FrameEdge::Left, 0.5),
-        );
+        .set_placement(&tray, ObjectPlacement::frame(FrameEdge::Left, 0.5));
     rebuild_standalone(&mut ui, &view);
     assert_fitting_tray_centered(&ui, 3, true, 5.0);
 

@@ -1,8 +1,9 @@
 //! Dragging a native group keeps its real controls above the group material.
 use super::*;
+use crate::frame_widgets;
 use hearthspace_common::frame_layout::{
-    FrameEdge, FrameGroup, FrameLayout, LayoutTarget, ObjectPlacement, TargetKind, WIDGETS,
-    frame_group_app_id, frame_group_grip_app_id, frame_widget_app_id,
+    FrameEdge, FrameGroup, LayoutTarget, ObjectPlacement, TargetKind, frame_group_app_id,
+    frame_group_grip_app_id,
 };
 
 const CLOCK: [u8; 4] = [20, 20, 220, 255];
@@ -30,7 +31,7 @@ fn assert_visible_controls(compositor: &HeadlessCompositor) {
             .as_array()
             .unwrap()
             .iter()
-            .find(|widget| widget["id"] == id)
+            .find(|widget| widget["kind"] == id)
             .unwrap();
         let rect = &widget["rect"];
         // Keep the sample away from the external grip's soft shadow on a narrow
@@ -57,15 +58,11 @@ fn frame_layout_held_group_keeps_native_controls_above_late_mapped_backing() {
     let _guard = headless_test_guard();
     let saved = tempfile::tempdir().unwrap();
     let path = saved.path().join("layout.json");
-    let mut model = FrameLayout {
-        allow_hide_tools: true,
-        ..Default::default()
-    };
-    for id in WIDGETS {
-        model.set_placement(&LayoutTarget::widget(*id), ObjectPlacement::Hidden);
-    }
+    let mut model = frame_widgets::only(&["clock", "wifi"]);
     for id in ["clock", "wifi"] {
-        model.placements.remove(&LayoutTarget::widget(id).key());
+        model
+            .placements
+            .remove(&frame_widgets::model_target(&model, id).key());
     }
     model.groups.insert(
         "visible-controls".into(),
@@ -73,7 +70,7 @@ fn frame_layout_held_group_keeps_native_controls_above_late_mapped_backing() {
             id: "visible-controls".into(),
             members: ["clock", "wifi"]
                 .into_iter()
-                .map(LayoutTarget::widget)
+                .map(|kind| frame_widgets::model_target(&model, kind))
                 .collect(),
         },
     );
@@ -100,13 +97,13 @@ fn frame_layout_held_group_keeps_native_controls_above_late_mapped_backing() {
         .to_owned();
     let mut client = connect(&compositor);
     let clock = client.add(
-        frame_widget_app_id(Some(&output), "clock"),
+        frame_widgets::app_id(&compositor, Some(&output), "clock"),
         (70, 44),
         (0, 0),
         CLOCK,
     );
     client.add(
-        frame_widget_app_id(Some(&output), "wifi"),
+        frame_widgets::app_id(&compositor, Some(&output), "wifi"),
         (44, 44),
         (0, 0),
         WIFI,

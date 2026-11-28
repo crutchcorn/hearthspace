@@ -6,18 +6,18 @@ use hearthspace_common::frame_layout::{LayoutTarget, ObjectPlacement};
 #[path = "dock_tests.rs"]
 mod tests;
 
-pub(in crate::ui) fn width(state: &ShellState, output: &str) -> Option<f64> {
+pub(in crate::ui) fn width(state: &ShellState, output: &str, instance: &str) -> Option<f64> {
     let layout = state
         .frame_layout
         .snapshot
         .outputs
         .iter()
         .find(|layout| layout.output == output)?;
-    let target = LayoutTarget::widget("apps");
+    let target = LayoutTarget::widget(instance);
     if layout.layout.placement(&target) == ObjectPlacement::Hidden {
         return None;
     }
-    let part = layout.widgets.iter().find(|part| part.id == "apps")?;
+    let part = layout.widgets.iter().find(|part| part.id == instance)?;
     if part.rect.width <= 0.0 || part.rect.height <= 0.0 {
         return None;
     }

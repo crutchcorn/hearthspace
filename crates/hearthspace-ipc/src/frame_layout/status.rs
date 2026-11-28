@@ -14,6 +14,8 @@ pub struct Rect {
 #[serde(default)]
 pub struct Widget {
     pub id: String,
+    pub kind: String,
+    pub mapped: bool,
     pub group: Option<String>,
     pub orientation: String,
     pub rect: Rect,

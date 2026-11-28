@@ -1,12 +1,13 @@
 //! Metadata changes and null-buffer role reset must reach placement and hit testing.
 use super::super::{canvas_map_client::MapClient, shell_panels::click};
 use super::*;
+use crate::frame_widgets;
 use hearthspace_common::{desktop_item_app_id, frame_layout::*};
 
 fn fixture() -> (HeadlessCompositor, tempfile::TempDir) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("layout.json");
-    let mut frame = FrameLayout::default();
+    let mut frame = frame_widgets::only(&["wifi", "volume", "clock", "battery"]);
     frame.groups.clear();
     frame.placements.clear();
     for (id, members, position) in [
@@ -17,7 +18,10 @@ fn fixture() -> (HeadlessCompositor, tempfile::TempDir) {
             id.into(),
             FrameGroup {
                 id: id.into(),
-                members: members.into_iter().map(LayoutTarget::widget).collect(),
+                members: members
+                    .into_iter()
+                    .map(|kind| frame_widgets::model_target(&frame, kind))
+                    .collect(),
             },
         );
         frame.placements.insert(
@@ -41,9 +45,9 @@ fn fixture() -> (HeadlessCompositor, tempfile::TempDir) {
     (compositor, directory)
 }
 
-fn frame_id(family: &str, target: &str) -> String {
+fn frame_id(compositor: &HeadlessCompositor, family: &str, target: &str) -> String {
     match family {
-        "widget" => frame_widget_app_id(Some("hearthspace-0"), target),
+        "widget" => frame_widgets::app_id(compositor, Some("hearthspace-0"), target),
         "group" => frame_group_app_id(Some("hearthspace-0"), target),
         "grip" => frame_group_grip_app_id(Some("hearthspace-0"), target),
         _ => unreachable!(),
@@ -61,7 +65,7 @@ fn target_point(compositor: &HeadlessCompositor, family: &str, target: &str) -> 
         .as_array()
         .unwrap()
         .iter()
-        .find(|item| item["id"] == target)
+        .find(|item| item[if family == "widget" { "kind" } else { "id" }] == target)
         .unwrap();
     let rect = &item[if family == "grip" { "grip" } else { "rect" }];
     (
@@ -105,7 +109,11 @@ fn assert_target(
     };
     assert_eq!(
         layout(compositor)["selected"]["target"],
-        json!({"kind":kind,"id":target})
+        if family == "widget" {
+            frame_widgets::target(compositor, target)
+        } else {
+            json!({"kind":kind,"id":target})
+        }
     );
 }
 
@@ -125,9 +133,9 @@ fn cached_frame_identity_tracks_same_kind_changes_and_unmap_role_reset(
     let surface = client.add(invalid.into(), (44, 44), (0, 0), COLOR);
     let managed = window(&compositor, invalid)["id"].clone();
     action(&compositor, "layout-tool");
-    client.capture_app_id(surface, &frame_id(family, first));
+    client.capture_app_id(surface, &frame_id(&compositor, family, first));
     assert_target(&compositor, &mut client, surface, family, first, "alpha");
-    client.capture_app_id(surface, &frame_id(family, second));
+    client.capture_app_id(surface, &frame_id(&compositor, family, second));
     assert_target(&compositor, &mut client, surface, family, second, "beta");
 
     let old_point = target_point(&compositor, family, second);
@@ -157,7 +165,7 @@ fn cached_frame_identity_tracks_same_kind_changes_and_unmap_role_reset(
     // Commit control geometry before restoring identity, or frame collision
     // settlement can merge its group before the new configure is acknowledged.
     client.repaint_with_size(surface, (44, 44));
-    client.capture_app_id(surface, &frame_id(family, second));
+    client.capture_app_id(surface, &frame_id(&compositor, family, second));
     assert_target(&compositor, &mut client, surface, family, second, "beta");
 
     client.capture_app_id(surface, invalid);

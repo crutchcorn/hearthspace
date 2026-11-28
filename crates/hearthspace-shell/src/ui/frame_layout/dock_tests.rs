@@ -1,5 +1,6 @@
-use super::super::{Output, Rect, Snapshot, Widget as Part, apply, widget_key};
+use super::super::{Output, Rect, Snapshot, Widget as Part, apply};
 use super::*;
+use crate::ui::frame_layout::fixture;
 use crate::{
     tray::{TrayWorker, channel},
     ui::{
@@ -64,18 +65,24 @@ fn fixture(path: &std::path::Path) -> (ShellState, TrayWorker) {
         Snapshot {
             outputs: ["eDP-1", "DP-1"]
                 .into_iter()
-                .map(|output| Output {
-                    output: output.into(),
-                    widgets: vec![Part {
-                        id: "apps".into(),
-                        rect: Rect {
-                            width: 500.0,
-                            height: 54.0,
+                .map(|output| {
+                    let layout = hearthspace_common::frame_layout::FrameLayout::default();
+                    let apps = layout.widget_id("apps").unwrap();
+                    Output {
+                        output: output.into(),
+                        layout,
+                        widgets: vec![Part {
+                            id: apps,
+                            kind: "apps".into(),
+                            rect: Rect {
+                                width: 500.0,
+                                height: 54.0,
+                                ..Default::default()
+                            },
                             ..Default::default()
-                        },
+                        }],
                         ..Default::default()
-                    }],
-                    ..Default::default()
+                    }
                 })
                 .collect(),
             ..Default::default()
@@ -92,7 +99,12 @@ fn view(
         dock::frame_view(
             state,
             output,
-            width(state, output.key()).unwrap_or(44.0),
+            width(
+                state,
+                output.key(),
+                &crate::ui::frame_layout::fixture::id(state, output.key(), "apps"),
+            )
+            .unwrap_or(44.0),
             false,
             &Default::default(),
         ),
@@ -128,7 +140,7 @@ fn closed_pin_with_status_menu_launches_on_its_output() {
         sized_box(super::super::widgets::content(
             state,
             &state.outputs[1],
-            "apps",
+            &fixture::id(state, state.outputs[1].key(), "apps"),
             false,
             false,
             Default::default(),
@@ -220,11 +232,13 @@ fn live_tray_remains_in_system_group_while_app_is_pinned_closed_and_unpinned() {
     let dir = tempfile::tempdir().unwrap();
     let (state, _worker) = fixture(dir.path());
     let layout = &state.frame_layout.snapshot.outputs[0].layout;
-    let tray = LayoutTarget::widget("tray");
+    let tray = fixture::layout_target(layout, "tray");
     assert_eq!(layout.group_for(&tray).unwrap().id, "system");
     assert_eq!(layout.placement(&tray).edge(), Some(FrameEdge::Top));
     assert_eq!(
-        layout.placement(&LayoutTarget::widget("apps")).edge(),
+        layout
+            .placement(&fixture::layout_target(layout, "apps"))
+            .edge(),
         Some(FrameEdge::Bottom)
     );
     let mut ui = Ui::new(state, view, (500, 300));

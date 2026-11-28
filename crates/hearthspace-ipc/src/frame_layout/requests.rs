@@ -78,6 +78,8 @@ pub struct SettingsSnapshot {
 #[serde(deny_unknown_fields)]
 pub struct ClockFormat {
     pub output: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub value: ClockDateFormat,
 }
 
@@ -95,7 +97,7 @@ pub struct Focus {
 pub struct Anchor {
     pub app_id: String,
     pub output: String,
-    pub target: LayoutTarget,
+    pub target: Option<LayoutTarget>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

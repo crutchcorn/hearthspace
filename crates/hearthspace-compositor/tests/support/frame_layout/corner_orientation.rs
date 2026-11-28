@@ -1,26 +1,25 @@
 //! Real pointer drags preserve the preview's axis when committing a corner drop.
 use super::super::canvas_map_client::MapClient;
 use super::*;
+use crate::frame_widgets;
 use hearthspace_common::frame_layout::{
-    FrameEdge, FrameGroup, FrameLayout, LayoutTarget, ObjectPlacement, TargetKind, WIDGETS,
-    frame_group_app_id, frame_group_grip_app_id, frame_widget_app_id,
+    FrameEdge, FrameGroup, LayoutTarget, ObjectPlacement, TargetKind, frame_group_app_id,
+    frame_group_grip_app_id,
 };
 use std::path::Path;
 
 const GROUP: &str = "corner-tools";
 
 fn seed(path: &Path, grouped: bool) {
-    let mut model = FrameLayout {
-        allow_hide_tools: true,
-        ..Default::default()
-    };
-    for id in WIDGETS {
-        model.set_placement(&LayoutTarget::widget(*id), ObjectPlacement::Hidden);
-    }
+    let mut model = frame_widgets::only(if grouped {
+        &["tools", "tray"]
+    } else {
+        &["tools"]
+    });
     let target = if grouped {
         let members: Vec<_> = ["tools", "tray"]
             .into_iter()
-            .map(LayoutTarget::widget)
+            .map(|kind| frame_widgets::model_target(&model, kind))
             .collect();
         for member in &members {
             model.placements.remove(&member.key());
@@ -34,7 +33,7 @@ fn seed(path: &Path, grouped: bool) {
         );
         LayoutTarget::new(TargetKind::Group, GROUP)
     } else {
-        LayoutTarget::widget("tools")
+        frame_widgets::model_target(&model, "tools")
     };
     model.set_placement(&target, ObjectPlacement::frame(FrameEdge::Top, 0.5));
     model.validate().unwrap();
@@ -68,7 +67,7 @@ impl Fixture {
         let mut client = connect(&compositor);
         let size = if grouped { (132, 44) } else { (194, 54) };
         let tools = client.add(
-            frame_widget_app_id(Some(&output), "tools"),
+            frame_widgets::app_id(&compositor, Some(&output), "tools"),
             size,
             (0, 0),
             COLOR,
@@ -76,7 +75,10 @@ impl Fixture {
         let mut native = vec![(tools, size)];
         let target = if grouped {
             for (id, size) in [
-                (frame_widget_app_id(Some(&output), "tray"), (88, 44)),
+                (
+                    frame_widgets::app_id(&compositor, Some(&output), "tray"),
+                    (88, 44),
+                ),
                 (frame_group_app_id(Some(&output), GROUP), (234, 54)),
                 (frame_group_grip_app_id(Some(&output), GROUP), (28, 24)),
             ] {
@@ -84,7 +86,7 @@ impl Fixture {
             }
             LayoutTarget::new(TargetKind::Group, GROUP)
         } else {
-            LayoutTarget::widget("tools")
+            LayoutTarget::widget(frame_widgets::id(&compositor, "tools"))
         };
         action(&compositor, "layout-tool");
         Self {
@@ -139,7 +141,7 @@ impl Fixture {
                     .as_array()
                     .unwrap()
                     .iter()
-                    .find(|widget| widget["id"] == id)
+                    .find(|widget| widget["kind"] == id)
                     .unwrap();
                 assert_eq!(member["group"], GROUP, "{state}");
                 assert_eq!(member["orientation"], orientation, "{state}");

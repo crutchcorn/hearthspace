@@ -1,5 +1,6 @@
 //! Durable attachments outlive their client binding, except an explicit confirmed close.
 use super::*;
+use crate::frame_widgets;
 use hearthspace_common::frame_layout::{
     FrameEdge, FrameLayout, LayoutTarget, ObjectPlacement, TargetKind,
 };
@@ -123,9 +124,9 @@ fn frame_layout_grouped_replacement_reuses_vacant_app_slot_and_confirmed_close_f
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("layout.json");
     let app = "dev.hearthspace.GroupedFrame";
-    let apps = LayoutTarget::widget("apps");
     let durable = slot(app, 0);
     let mut original = FrameLayout::default();
+    let apps = frame_widgets::model_target(&original, "apps");
     // Detaching the tall window uses the upper right edge. Keep the unrelated
     // system bar clear of that strip so its valid auto-merge cannot mask detach.
     original.set_placement(

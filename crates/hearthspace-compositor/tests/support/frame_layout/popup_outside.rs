@@ -1,7 +1,7 @@
 //! Real outside presses cancel anchors; the initiating bar and panel do not.
 use super::super::shell_panels::click;
 use super::*;
-use hearthspace_common::frame_layout::frame_widget_app_id;
+use crate::frame_widgets;
 use std::os::unix::net::UnixDatagram;
 
 fn epoch(compositor: &HeadlessCompositor) -> u64 {
@@ -15,7 +15,7 @@ fn anchor(compositor: &HeadlessCompositor, output: &str) {
             "frame-popup-anchor {}",
             json!({
                 "app_id":hearthspace_common::notifications_app_id_for_output(output),
-                "output":output,"target":{"kind":"widget","id":"notifications"}
+                "output":output,"target":frame_widgets::target(compositor, "notifications")
             })
         ),
     );
@@ -27,7 +27,7 @@ fn widget_point(compositor: &HeadlessCompositor) -> (f64, f64) {
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == "notifications")
+        .find(|widget| widget["kind"] == "notifications")
         .unwrap()["rect"];
     (
         rect["x"].as_f64().unwrap() + 22.,
@@ -47,7 +47,7 @@ fn frame_popup_outside_press_revokes_anchor_but_initiating_bar_release_does_not(
     let mut client = connect(&compositor);
     let normal = client.add("outside-anchor-test".into(), (300, 200), (0, 0), COLOR);
     let widget = client.add(
-        frame_widget_app_id(Some(&output), "notifications"),
+        frame_widgets::app_id(&compositor, Some(&output), "notifications"),
         (44, 44),
         (0, 0),
         COLOR,
@@ -109,7 +109,7 @@ fn frame_popup_mapping_inside_input_and_bar_focus_preserve_the_anchor_epoch() {
         .to_owned();
     let mut client = connect(&compositor);
     let widget = client.add(
-        frame_widget_app_id(Some(&output), "notifications"),
+        frame_widgets::app_id(&compositor, Some(&output), "notifications"),
         (44, 44),
         (0, 0),
         COLOR,

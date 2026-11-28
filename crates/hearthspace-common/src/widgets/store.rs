@@ -33,7 +33,7 @@ impl WidgetInstance {
 /// A single-writer collection. Placement belongs to an external arrangement owner.
 /// Persist its state and this collection together after coordinated changes.
 /// Old-backup recovery and concurrent writer arbitration remain external.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WidgetStore {
     namespace: Uuid,
     next_serial: u64,

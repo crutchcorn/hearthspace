@@ -1,6 +1,7 @@
 //! Recovery must see takeovers even when no shell is listening for wakeups.
 use super::super::session_lock::lock_client::LockClient;
 use super::*;
+use crate::frame_widgets;
 
 fn epoch(compositor: &HeadlessCompositor) -> u64 {
     layout(compositor)["popup_epoch"].as_u64().unwrap()
@@ -25,7 +26,7 @@ fn frame_popup_epoch_persists_after_editor_confirmation_and_lock_takeovers() {
     command(
         &compositor,
         "remove",
-        json!({"kind":"widget","id":"tools"}),
+        frame_widgets::target(&compositor, "tools"),
         Value::Null,
     );
     command(&compositor, "cancel", Value::Null, Value::Null);
@@ -53,7 +54,6 @@ fn frame_popup_epoch_persists_after_editor_confirmation_and_lock_takeovers() {
 
 #[test]
 fn frame_popup_escape_invalidates_an_acknowledged_anchor_without_a_mapped_panel() {
-    use hearthspace_common::frame_layout::frame_widget_app_id;
     use std::os::unix::net::UnixDatagram;
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
@@ -64,7 +64,7 @@ fn frame_popup_escape_invalidates_an_acknowledged_anchor_without_a_mapped_panel(
         .to_owned();
     let mut client = connect(&compositor);
     let widget = client.add(
-        frame_widget_app_id(Some(&output), "notifications"),
+        frame_widgets::app_id(&compositor, Some(&output), "notifications"),
         (44, 44),
         (0, 0),
         COLOR,
@@ -78,7 +78,7 @@ fn frame_popup_escape_invalidates_an_acknowledged_anchor_without_a_mapped_panel(
             "frame-popup-anchor {}",
             json!({
                 "app_id":hearthspace_common::notifications_app_id_for_output(&output),
-                "output":output,"target":{"kind":"widget","id":"notifications"}
+                "output":output,"target":frame_widgets::target(&compositor, "notifications")
             })
         ),
     );

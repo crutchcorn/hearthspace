@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::frame_layout::fixture;
 
 #[test]
 fn removing_one_output_menu_does_not_clear_another_outputs_focus_targets() {
@@ -64,20 +65,20 @@ fn confirmed_tool_and_remembered_primary_are_shared_across_output_reordering() {
             widgets::content(
                 state,
                 &state.outputs[0],
-                "tools",
+                &fixture::id(state, state.outputs[0].key(), "tools"),
                 false,
                 false,
                 Default::default(),
-                &state.frame_layout.chains[&widget_key("test", "tools")],
+                &state.frame_layout.chains[&fixture::key(state, "test", "tools")],
             ),
             widgets::content(
                 state,
                 &state.outputs[1],
-                "tools",
+                &fixture::id(state, state.outputs[1].key(), "tools"),
                 false,
                 false,
                 Default::default(),
-                &state.frame_layout.chains[&widget_key("other", "tools")],
+                &state.frame_layout.chains[&fixture::key(state, "other", "tools")],
             ),
         )))
     };

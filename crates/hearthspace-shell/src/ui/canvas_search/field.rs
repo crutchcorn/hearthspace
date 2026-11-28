@@ -18,6 +18,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     let target = search.target.clone();
     let input = Input {
         text: search.query.clone(),
+        widgets_only: search.snapshot.filter == hearthspace_common::canvas_search::Filter::Widgets,
         target: target.clone(),
     }
     .height(44.0.px())
@@ -126,6 +127,7 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
 
 struct Input {
     text: String,
+    widgets_only: bool,
     target: FocusTarget,
 }
 impl ViewMarker for Input {}
@@ -135,8 +137,16 @@ impl View<ShellState, (), ViewCtx> for Input {
     fn build(&self, ctx: &mut ViewCtx, _: &mut ShellState) -> (Self::Element, ()) {
         let pod = ctx.create_pod(SearchEditor::configured(
             &self.text,
-            "Search the canvas…",
-            "Search apps, windows, files, folders, controls, and tools",
+            if self.widgets_only {
+                "Search widgets…"
+            } else {
+                "Search the canvas…"
+            },
+            if self.widgets_only {
+                "Search widgets to add to the canvas"
+            } else {
+                "Search apps, windows, files, folders, widgets, controls, and tools"
+            },
             16.0,
         ));
         ctx.record_action_source(pod.new_widget.id());

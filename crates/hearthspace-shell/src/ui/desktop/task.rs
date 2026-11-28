@@ -159,10 +159,12 @@ fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement
                                     }
                                     Err(failure) => error = Some(format!("Application registration failed: {failure}")),
                                 }
+                                if catalog.apps() != next_catalog.apps() { registered = None; }
                                 if registered.as_ref() != Some(&next_items) {
                                     let worker_items = next_items.clone();
+                                    let worker_catalog = next_catalog.clone();
                                     let worker_socket = socket.clone();
-                                    match tokio::task::spawn_blocking(move || register(&worker_socket, &worker_items)).await {
+                                    match tokio::task::spawn_blocking(move || register(&worker_socket, &worker_items, &worker_catalog)).await {
                                         Ok(Ok(())) => registered = Some(next_items.clone()),
                                         Ok(Err(message)) => error = Some(message),
                                         Err(error) => tracing::warn!(%error, "desktop registration worker failed"),
@@ -186,6 +188,7 @@ fn operations() -> impl View<ShellState, (), xilem::ViewCtx, Element = NoElement
             Update::Source(catalog, items, error) => {
                 state.catalog = catalog;
                 state.desktop.replace_items(items);
+                super::reconcile_pinned_apps(state);
                 state.desktop.source_error = error;
             }
             Update::Snapshot(snapshot) => {

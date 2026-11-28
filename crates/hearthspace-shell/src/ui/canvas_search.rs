@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tokio::sync::{Notify, mpsc, watch};
 use xilem::{WindowId, WindowView, dpi::LogicalSize};
 
+#[path = "canvas_search/apps.rs"]
+mod apps;
 #[path = "canvas_search/controls.rs"]
 pub(super) mod controls;
 #[path = "canvas_search/field.rs"]
@@ -34,6 +36,7 @@ pub(super) struct Snapshot {
     pub session: u64,
     pub output: Option<String>,
     pub query: String,
+    pub filter: hearthspace_common::canvas_search::Filter,
     pub handwriting: bool,
     pub field: Bounds,
     pub results_above: bool,
@@ -121,6 +124,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
     if !search.snapshot.active {
         return windows;
     }
+    windows.extend(apps::windows(state));
     windows.push(super::popup::window(
         search.window_id,
         "Canvas search",
@@ -197,6 +201,22 @@ fn apply_snapshot(state: &mut ShellState, snapshot: Snapshot) {
     if search.pending_edit.is_none() {
         search.query = snapshot.query.clone();
         search.handwriting_open = snapshot.handwriting;
+    }
+    search.result_windows.retain(|id, _| {
+        !id.starts_with("app:")
+            || (snapshot.active && snapshot.results.iter().any(|result| result.id == *id))
+    });
+    if snapshot.active {
+        for result in snapshot
+            .results
+            .iter()
+            .filter(|result| result.kind == "app")
+        {
+            search
+                .result_windows
+                .entry(result.id.clone())
+                .or_insert_with(WindowId::next);
+        }
     }
     search.snapshot = snapshot;
     search.error = None;

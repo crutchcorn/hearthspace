@@ -115,7 +115,7 @@ impl App {
         drag: &mut Drag,
         delta: Point,
     ) -> smithay::utils::Point<f64, smithay::utils::Logical> {
-        if !super::super::turns_as_toolbar(&drag.target.target) {
+        if !self.turns_as_toolbar(&drag.target) {
             return (drag.rect.x + delta.x, drag.rect.y + delta.y).into();
         }
         let original_vertical = drag.original_vertical;
@@ -160,9 +160,10 @@ impl App {
         width: f64,
         height: f64,
     ) -> Option<Point> {
-        let drag = self.layout_editor.drag.as_ref().filter(|drag| {
-            drag.moved && drag.target == *target && super::super::turns_as_toolbar(&target.target)
-        })?;
+        let drag =
+            self.layout_editor.drag.as_ref().filter(|drag| {
+                drag.moved && drag.target == *target && self.turns_as_toolbar(target)
+            })?;
         let original_vertical = drag.original_vertical;
         let vertical = drag.edge.is_some_and(|edge| edge.is_vertical());
         let pivot = super::super::grip::ToolbarGrip::at(drag.rect, drag.start, original_vertical)

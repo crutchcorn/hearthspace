@@ -1,4 +1,4 @@
-use super::WIDGETS;
+use crate::widgets::InstanceId;
 use crate::{hex_decode, hex_encode, shell_app_id_for_output, shell_output_name_from_app_id};
 
 const WIDGET: &str = "dev.hearthspace.frame-widget";
@@ -15,7 +15,8 @@ pub fn frame_widget_app_id(output: Option<&str>, id: &str) -> String {
 
 pub fn frame_widget_from_app_id(app_id: &str) -> Option<(Option<String>, String)> {
     let (output, id) = parse_target_app_id(WIDGET, app_id)?;
-    WIDGETS.contains(&id.as_str()).then_some((output, id))
+    id.parse::<InstanceId>().ok()?;
+    Some((output, id))
 }
 
 pub fn frame_group_app_id(output: Option<&str>, id: &str) -> String {

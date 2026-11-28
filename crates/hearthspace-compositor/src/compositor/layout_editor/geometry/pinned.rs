@@ -48,8 +48,11 @@ impl App {
                             .is_some()
                     })
             });
-            let height =
-                frame_layout::editor_height(selected.map(|target| &target.target), grouped);
+            let height = frame_layout::editor_height(
+                selected.map(|target| &target.target),
+                grouped,
+                selected.and_then(|target| self.widget_kind(&target.output, &target.target.id)),
+            );
             let width = (view.width - 24.).clamp(120., 260.);
             return Some(Rect {
                 x: view.x + (view.width - width) / 2.,

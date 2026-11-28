@@ -1,13 +1,13 @@
 //! A held click follows the same frame surface when its native size changes.
 use super::*;
-use hearthspace_common::frame_layout::frame_widget_app_id;
+use crate::frame_widgets;
 
 fn apps_bounds(compositor: &HeadlessCompositor) -> Value {
     layout(compositor)["outputs"][0]["widgets"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == "apps")
+        .find(|widget| widget["kind"] == "apps")
         .unwrap()["rect"]
         .clone()
 }
@@ -28,7 +28,7 @@ fn frame_layout_held_apps_click_tracks_resized_surface_without_retargeting_relea
         .unwrap();
     action(&compositor, format!("move-window {normal_id} 900 500"));
     let apps = client.add(
-        frame_widget_app_id(Some(&output), "apps"),
+        frame_widgets::app_id(&compositor, Some(&output), "apps"),
         (150, 54),
         (0, 0),
         COLOR,

@@ -26,6 +26,8 @@ pub(super) enum Action {
     Background,
     Settings,
     Layout,
+    Widgets,
+    RemoveWidget,
 }
 
 pub(in crate::ui) struct Request {
@@ -60,6 +62,24 @@ pub(super) fn perform(
     )
     .map_err(|e| e.to_string())?;
     let accepted: Accepted = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    let widget_command = match &request.action {
+        Action::Widgets if accepted.context.ids.is_empty() => {
+            Some(format!("desktop-context-widgets {}", request.generation))
+        }
+        Action::RemoveWidget if accepted.context.widget_id().is_some() => Some(format!(
+            "desktop-context-remove-widget {}",
+            request.generation
+        )),
+        Action::Layout if accepted.context.widget_id().is_some() => Some(format!(
+            "desktop-context-layout-widget {}",
+            request.generation
+        )),
+        _ => None,
+    };
+    if let Some(command) = widget_command {
+        command_client::send_command(socket, &command)?;
+        return Ok(Completed::Closed(None));
+    }
     let selected: Vec<_> = accepted
         .context
         .ids
@@ -215,6 +235,9 @@ pub(super) fn perform(
             accepted.context.output.as_deref(),
         )?,
         Action::Layout => command_client::send_command(socket, "layout-tool")?,
+        Action::Widgets | Action::RemoveWidget => {
+            return Err("Open the widget menu again.".into());
+        }
     }
     Ok(Completed::Closed(None))
 }

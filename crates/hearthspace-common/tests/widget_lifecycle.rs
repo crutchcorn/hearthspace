@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 
 fn clock_preferences(format: &str) -> Preferences {
     Preferences {
+        hide_when_unavailable: false,
         expanded_details: true,
         clock_date_format: Some(format.to_owned()),
     }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::frame_layout::fixture;
 use hearthspace_ipc::command::CanvasTool;
 use masonry::{
     accesskit::Toggled,
@@ -279,12 +280,12 @@ fn compact_menu_keeps_all_six_rows_reachable_when_height_is_constrained() {
 fn vertical(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    let chain = &state.frame_layout.chains[&widget_key("test", "tools")];
+    let chain = &state.frame_layout.chains[&fixture::key(state, "test", "tools")];
     sized_box(focus::boundary(
         widgets::content(
             state,
             &state.outputs[0],
-            "tools",
+            &fixture::id(state, state.outputs[0].key(), "tools"),
             true,
             false,
             Default::default(),
@@ -292,7 +293,7 @@ fn vertical(
         ),
         chain.clone(),
         "test".into(),
-        LayoutTarget::widget("tools"),
+        fixture::target(state, "test", "tools"),
         state.frame_layout.snapshot.focus_request.clone(),
     ))
 }
@@ -316,7 +317,7 @@ fn side_toolbar_keeps_upright_controls_and_reveals_each_keyboard_focus() {
     ui.state.frame_layout.snapshot.focus_request = Some(FocusRequest {
         serial: 1,
         output: "test".into(),
-        target: LayoutTarget::widget("tools"),
+        target: fixture::target(&ui.state, "test", "tools"),
         reverse: false,
     });
     ui.rebuild(&vertical);

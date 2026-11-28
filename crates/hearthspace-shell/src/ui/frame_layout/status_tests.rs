@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::frame_layout::fixture;
 use crate::ui::{notifications::Notification, quick_panel::Kind};
 use hearthspace_common::frame_layout::ClockDateFormat;
 use hearthspace_ui_components::{self as components, icons::IconWidget};
@@ -19,7 +20,8 @@ fn status_state(id: &str, vertical: bool) -> ShellState {
     let mut state = state();
     state.frame_layout.snapshot.editing = false;
     state.frame_layout.snapshot.outputs[0].widgets = vec![Widget {
-        id: id.into(),
+        id: fixture::id(&state, "test", id),
+        kind: id.into(),
         orientation: if vertical { "vertical" } else { "horizontal" }.into(),
         ..Default::default()
     }];
@@ -31,7 +33,7 @@ fn surface_size(state: &ShellState) -> (u32, u32) {
     let part = &output.widgets[0];
     let (width, height) = widgets::size(
         state,
-        &part.id,
+        &part.kind,
         part.orientation == "vertical",
         output.layout.is_expanded(&part.id),
         false,
@@ -73,7 +75,7 @@ fn bounds(ui: &Ui<impl WidgetView<ShellState, Widget: Sized>>, id: WidgetId) -> 
 
 fn control(ui: &Ui<impl WidgetView<ShellState, Widget: Sized>>) -> WidgetId {
     ui.button(
-        if ui.state.frame_layout.snapshot.outputs[0].widgets[0].id == "clock" {
+        if ui.state.frame_layout.snapshot.outputs[0].widgets[0].kind == "clock" {
             "Date and time"
         } else {
             "Notifications"
@@ -254,10 +256,10 @@ fn icon_only_clock_and_notifications_stay_upright_44_pixel_squares() {
     for id in ["clock", "notifications"] {
         for vertical in [false, true] {
             let mut state = status_state(id, vertical);
+            let identity = fixture::id(&state, "test", id);
             state.frame_layout.snapshot.outputs[0]
                 .layout
-                .expanded
-                .insert(id.into(), false);
+                .toggle_expanded(&identity);
             let size = surface_size(&state);
             let ui = Ui::new(state, view, size);
             let button = bounds(&ui, control(&ui));

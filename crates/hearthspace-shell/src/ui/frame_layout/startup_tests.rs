@@ -25,7 +25,7 @@ fn startup_waits_for_frame_parts_without_creating_legacy_corner_windows() {
         ..Default::default()
     };
     apply(&mut state, snapshot.clone());
-    let frame_windows = hearthspace_common::frame_layout::WIDGETS.len();
+    let frame_windows = snapshot.outputs[0].layout.widgets.instances().count();
     assert_eq!(windows(&state).len(), frame_windows);
     assert_eq!(
         crate::ui::views::app_logic(&mut state).count(),

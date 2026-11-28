@@ -66,8 +66,15 @@ fn page_rows(state: &ShellState) -> Vec<Row> {
     let Some(context) = &menu.current else {
         return vec![];
     };
+    if context.widget_id().is_some() {
+        return vec![
+            Row::action("Change Layout…", Action::Layout),
+            Row::action("Remove Widget", Action::RemoveWidget),
+        ];
+    }
     if context.ids.is_empty() {
         return vec![
+            Row::action("Add Widget…", Action::Widgets),
             Row::new("New Folder…", Choice::NewFolder),
             Row::action("Paste", Action::Paste),
             Row::action("Select All", Action::SelectAll),

@@ -175,3 +175,28 @@ fn selection_announces_the_result_without_taking_editor_focus() {
     assert_eq!(announcement.live(), masonry::accesskit::Live::Polite);
     assert_eq!(ui.harness.focused_widget_id(), editor);
 }
+
+#[test]
+fn widget_picker_keeps_its_category_out_of_the_editable_query() {
+    let mut state = state();
+    state.canvas_search.snapshot.filter = hearthspace_common::canvas_search::Filter::Widgets;
+    let (edits, changes) = tokio::sync::watch::channel(None);
+    state.canvas_search.edits = Some(edits);
+    let mut ui = Ui::new(state, field, (420, 54));
+    let editor = ui.harness.focused_widget_id().unwrap();
+    assert_eq!(
+        ui.harness.access_node(editor).unwrap().value().as_deref(),
+        Some("")
+    );
+    ui.harness.keyboard_type_chars("clock");
+    ui.dispatch(&field);
+    assert_eq!(changes.borrow().as_ref().unwrap().query, "clock");
+    assert_eq!(
+        ui.harness.access_node(editor).unwrap().value().as_deref(),
+        Some("clock")
+    );
+    assert_eq!(
+        ui.state.canvas_search.snapshot.filter,
+        hearthspace_common::canvas_search::Filter::Widgets
+    );
+}

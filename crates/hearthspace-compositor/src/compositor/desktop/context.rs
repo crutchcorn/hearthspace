@@ -9,6 +9,7 @@ use smithay::{
 
 mod app;
 mod commands;
+mod widgets;
 
 #[derive(Default)]
 pub(super) struct State {
@@ -16,6 +17,7 @@ pub(super) struct State {
     app_ids: std::collections::BTreeSet<String>,
     sequence: u64,
     anchor: Point<i32, Logical>,
+    canvas_anchor: Option<(f64, f64)>,
     suppress_release: bool,
     return_focus: Option<String>,
     source_window: Option<u64>,
@@ -61,6 +63,15 @@ impl App {
         }
         let id = match self.hit_test(self.pointer_location) {
             Some(HitTarget::Client { window_index, .. }) => {
+                if self.widget_kind_for_window(window_index).is_some()
+                    && !self.layout_target_on_frame(window_index)
+                {
+                    if self.open_widget_context(window_index, false).is_err() {
+                        return false;
+                    }
+                    self.desktop.context.suppress_release = true;
+                    return true;
+                }
                 let Some(id) = self.desktop_id(window_index) else {
                     return false;
                 };
@@ -101,6 +112,14 @@ impl App {
             self.desktop.selected.clear();
             self.pointer_location.to_i32_round()
         };
+        self.begin_desktop_context(anchor, id)
+    }
+
+    fn begin_desktop_context(
+        &mut self,
+        anchor: Point<i32, Logical>,
+        id: Option<String>,
+    ) -> Result<(), String> {
         let outputs = self.capture_outputs();
         let output = outputs
             .iter()
@@ -114,6 +133,12 @@ impl App {
             .ok_or("No active output")?;
         self.desktop.context.sequence = self.desktop.context.sequence.wrapping_add(1).max(1);
         self.desktop.context.anchor = anchor;
+        let canvas = crate::geometry::screen_to_canvas(
+            anchor.to_f64(),
+            self.viewport_offset,
+            self.viewport_scale,
+        );
+        self.desktop.context.canvas_anchor = Some((canvas.x, canvas.y));
         self.desktop.context.return_focus = id;
         self.desktop.context.source_window = None;
         self.desktop.context.root_window = None;

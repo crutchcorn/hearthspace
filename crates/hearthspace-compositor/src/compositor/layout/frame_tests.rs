@@ -9,7 +9,7 @@ fn durable_group_members_survive_releasing_all_claims_and_reloading() {
     store.claim(73, "org.example.App".into());
     let canonical = store.canonical_target(&LayoutTarget::new(TargetKind::Window, "73"));
     let mut layout = FrameLayout::default();
-    let apps = LayoutTarget::widget("apps");
+    let apps = LayoutTarget::widget(layout.widget_id("apps").unwrap());
     layout.set_placement(&apps, ObjectPlacement::frame(FrameEdge::Right, 0.5));
     let group = layout.merge(&canonical, &apps, false).unwrap();
     store.layout.frames.insert("output".into(), layout.clone());
@@ -63,9 +63,9 @@ fn legacy_runtime_references_cannot_attach_to_reused_ids_after_reload() {
     let path = directory.path().join("layout.json");
     let mut store = LayoutStore::load(Some(path.clone()));
     let window = LayoutTarget::new(TargetKind::Window, "1");
-    let apps = LayoutTarget::widget("apps");
     let durable = LayoutTarget::new(TargetKind::Window, saved_id("editor", 0));
     let mut layout = FrameLayout::default();
+    let apps = LayoutTarget::widget(layout.widget_id("apps").unwrap());
     layout.set_placement(&apps, ObjectPlacement::frame(FrameEdge::Right, 0.5));
     layout.merge(&window, &apps, false).unwrap();
     layout.set_placement(&durable, ObjectPlacement::frame(FrameEdge::Top, 0.5));

@@ -115,10 +115,28 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
                 .unwrap_or_else(|| hearthspace_common::QUICK_PANEL_APP_ID.into()),
         ),
     };
-    let target = origin.as_ref().map_or_else(
-        || hearthspace_common::frame_layout::LayoutTarget::widget(id),
-        |origin| origin.target.clone(),
-    );
+    let target = origin
+        .as_ref()
+        .map(|origin| origin.target.clone())
+        .or_else(|| {
+            let layout = state
+                .frame_layout
+                .snapshot
+                .outputs
+                .iter()
+                .find(|output| output.output == key)?;
+            let instance = if id == "apps" {
+                layout
+                    .layout
+                    .widget_id("launcher")
+                    .or_else(|| layout.layout.widget_id("apps"))
+            } else {
+                layout.layout.widget_id(id)
+            }?;
+            Some(hearthspace_common::frame_layout::LayoutTarget::widget(
+                instance,
+            ))
+        });
     let command = format!(
         "frame-popup-anchor {}",
         serde_json::to_string(&hearthspace_ipc::frame_layout::Anchor {
@@ -144,7 +162,7 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         key.to_owned(),
         popup,
         state.frame_layout.popup_epoch,
-        origin,
+        origin.clone(),
     );
     let request = super::task::Request {
         command,
@@ -158,6 +176,8 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         }
         true
     } else {
+        state.frame_layout.intents.cancel();
+        state.frame_layout.popup_origin = origin;
         false
     }
 }

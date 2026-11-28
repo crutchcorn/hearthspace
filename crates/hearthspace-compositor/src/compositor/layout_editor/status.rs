@@ -1,6 +1,6 @@
 use hearthspace_ipc::frame_layout::{Group, Output, PinnedWindow, Snapshot, Widget};
 
-use super::{App, LayoutTarget, ObjectPlacement, Target, TargetKind};
+use super::{App, ObjectPlacement, Target, TargetKind};
 
 impl App {
     pub(super) fn layout_status(&self, available: bool) -> Snapshot {
@@ -26,16 +26,19 @@ impl App {
             .iter()
             .filter_map(|(output, layout)| {
                 let view = self.frame_output_rect(output)?;
-                let widgets = hearthspace_common::frame_layout::WIDGETS
-                    .iter()
-                    .map(|id| {
+                let widgets = layout
+                    .widget_targets()
+                    .map(|widget| {
+                        let id = &widget.id;
                         let target = Target {
                             output: output.clone(),
-                            target: LayoutTarget::widget(*id),
+                            target: widget.clone(),
                         };
                         let placed = self.frame_placed(&target);
                         Widget {
-                            id: (*id).into(),
+                            id: id.clone(),
+                            kind: layout.widget_kind(id).unwrap_or("").into(),
+                            mapped: self.target_window_index(&target).is_some(),
                             merged: self.frame_widget_merged(output, id),
                             group: placed.and_then(|placed| placed.group.clone()),
                             orientation: orientation(placed.is_some_and(|placed| placed.vertical)),

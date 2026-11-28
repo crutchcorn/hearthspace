@@ -45,6 +45,21 @@ impl App {
         self.layout_changed();
         Ok(())
     }
+    pub(in crate::compositor) fn edit_layout_target(
+        &mut self,
+        target: Target,
+    ) -> Result<(), String> {
+        self.open_layout_editor()?;
+        self.check_layout_target(&target)?;
+        self.layout_editor
+            .session
+            .as_mut()
+            .expect("active editor")
+            .selected = Some(target);
+        self.layout_changed();
+        Ok(())
+    }
+
     pub(in crate::compositor) fn reset_layout_editor(&mut self) {
         self.cancel_layout_drag();
         self.layout_editor.session = None;
@@ -58,6 +73,13 @@ impl App {
     pub(super) fn check_layout_target(&self, target: &Target) -> Result<(), String> {
         if !target.target.valid() || !self.layout_editor.layouts.contains_key(&target.output) {
             return Err("invalid layout target".into());
+        }
+        if target.target.kind == TargetKind::Widget
+            && self
+                .widget_kind(&target.output, &target.target.id)
+                .is_none()
+        {
+            return Err("widget disappeared".into());
         }
         if target.target.kind == TargetKind::Window && target.target.id.parse::<u64>().is_err() {
             return Err("window commands require a live window ID".into());
@@ -98,6 +120,9 @@ impl App {
         if !self.layout_editing() {
             return Err("layout editor is not open".into());
         }
+        // A drag snapshot owns only its tentative edit. Retire it before an
+        // acknowledged command can remove an instance or advance its identity.
+        self.cancel_layout_drag();
         if matches!(command.action, Action::Done) {
             self.finish_layout_editor();
             return Ok(());
@@ -191,7 +216,7 @@ impl App {
                     .layouts
                     .get_mut(&target.output)
                     .unwrap()
-                    .clock_date_format = format;
+                    .set_widget_clock_date_format(&target.target.id, format)?;
             }
             Action::Done | Action::Cancel | Action::Confirm | Action::AllowHideTools { .. } => {
                 unreachable!("handled before selecting a target")
@@ -202,6 +227,7 @@ impl App {
         Ok(())
     }
     pub(super) fn apply_frame_settings(&mut self, allow: Option<bool>, restore: bool) {
+        self.cancel_layout_drag();
         if let Some(allow) = allow {
             self.layout_editor.allow_hide_tools = allow;
             for layout in self.layout_editor.layouts.values_mut() {
@@ -210,8 +236,12 @@ impl App {
         }
         if restore {
             for layout in self.layout_editor.layouts.values_mut() {
-                let target = LayoutTarget::widget("tools");
-                layout.set_placement(&target, frame_layout::default_placement(&target));
+                let placement = frame_layout::starter_placement("tools");
+                if let Some(id) = layout.widget_id("tools") {
+                    layout.set_placement(&LayoutTarget::widget(id), placement);
+                } else {
+                    let _ = layout.add_widget("tools", placement);
+                }
             }
         }
         self.reconcile_layout_editor();

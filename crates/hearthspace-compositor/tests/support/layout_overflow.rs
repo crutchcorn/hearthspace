@@ -2,9 +2,9 @@
 use super::navigation::{action, query};
 use super::shell_panels::{click, connect};
 use super::*;
+use crate::frame_widgets;
 use hearthspace_common::frame_layout::{
-    FrameEdge, FrameGroup, FrameLayout, LayoutTarget, ObjectPlacement, WIDGETS, frame_group_app_id,
-    frame_widget_app_id,
+    FrameEdge, FrameGroup, FrameLayout, ObjectPlacement, frame_group_app_id,
 };
 use serde_json::{Value, json};
 
@@ -16,7 +16,7 @@ fn widget(compositor: &HeadlessCompositor, id: &str) -> Value {
         .as_array()
         .unwrap()
         .iter()
-        .find(|w| w["id"] == id)
+        .find(|w| w["kind"] == id)
         .unwrap()
         .clone()
 }
@@ -26,6 +26,16 @@ fn layout_compact_default_bars_do_not_rewrite_groups_or_custom_placements() {
     let _guard = headless_test_guard();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("layout.json");
+    let starter = FrameLayout::default();
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&json!({
+            "version":1,"x":0,"y":0,"scale":1.,"placements":[],
+            "frames":{"hearthspace-0":starter}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     let mut compositor = HeadlessCompositor::spawn_with_layout("700x600", Some(&path));
     drop(compositor.wait_for_socket());
     let before = layout(&compositor);
@@ -36,10 +46,7 @@ fn layout_compact_default_bars_do_not_rewrite_groups_or_custom_placements() {
         "standalone native viewports need the full output bounds, not their previous size"
     );
     assert_eq!(output["compact"], true);
-    assert_eq!(
-        output["layout"],
-        serde_json::to_value(FrameLayout::default()).unwrap()
-    );
+    assert_eq!(output["layout"], serde_json::to_value(starter).unwrap());
     let bars: Vec<_> = output["groups"]
         .as_array()
         .unwrap()
@@ -59,7 +66,7 @@ fn layout_compact_default_bars_do_not_rewrite_groups_or_custom_placements() {
         &compositor,
         format!(
             "layout-command {}",
-            json!({"session":editing["session"],"output":editing["output"],"action":"place","target":{"kind":"widget","id":"notifications"},"placement":{"surface":"canvas","x":240.,"y":200.}})
+            json!({"session":editing["session"],"output":editing["output"],"action":"place","target":frame_widgets::target(&compositor, "notifications"),"placement":{"surface":"canvas","x":240.,"y":200.}})
         ),
     );
     let changed = layout(&compositor);
@@ -92,23 +99,17 @@ fn layout_overflow_wheel_and_native_focus_reveal_members_without_canvas_navigati
     let _guard = headless_test_guard();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("layout.json");
-    let mut frame = FrameLayout {
-        allow_hide_tools: true,
-        ..FrameLayout::default()
-    };
-    frame.groups.clear();
-    frame.placements.clear();
     let members = ["clock", "wifi", "volume", "power"];
-    for id in WIDGETS.iter().filter(|id| !members.contains(id)) {
-        frame
-            .placements
-            .insert(LayoutTarget::widget(*id).key(), ObjectPlacement::Hidden);
-    }
+    let mut frame = frame_widgets::only(&members);
+    frame.placements.clear();
     frame.groups.insert(
         "long".into(),
         FrameGroup {
             id: "long".into(),
-            members: members.iter().map(|id| LayoutTarget::widget(*id)).collect(),
+            members: members
+                .iter()
+                .map(|id| frame_widgets::model_target(&frame, id))
+                .collect(),
         },
     );
     frame.placements.insert(
@@ -133,7 +134,7 @@ fn layout_overflow_wheel_and_native_focus_reveal_members_without_canvas_navigati
     let mut power = 0;
     for id in members {
         let number = client.add(
-            frame_widget_app_id(Some(&output), id),
+            frame_widgets::app_id(&compositor, Some(&output), id),
             (if id == "power" { 1500 } else { 600 }, 44),
             (0, 0),
             [50, 90, 150, 255],
@@ -157,7 +158,7 @@ fn layout_overflow_wheel_and_native_focus_reveal_members_without_canvas_navigati
         &compositor,
         format!(
             "frame-focus-next {}",
-            json!({"output":output,"target":{"kind":"widget","id":"volume"}})
+            json!({"output":output,"target":frame_widgets::target(&compositor, "volume")})
         ),
     );
     assert_eq!(client.focus(), Some(power));
@@ -174,7 +175,7 @@ fn layout_overflow_wheel_and_native_focus_reveal_members_without_canvas_navigati
         &compositor,
         format!(
             "frame-focus-region {}",
-            json!({"output":output,"target":{"kind":"widget","id":"power"},"rect":{"x":control_x,"y":0.,"width":44.,"height":44.}})
+            json!({"output":output,"target":frame_widgets::target(&compositor, "power"),"rect":{"x":control_x,"y":0.,"width":44.,"height":44.}})
         ),
     );
     let power_rect = widget(&compositor, "power")["rect"].clone();

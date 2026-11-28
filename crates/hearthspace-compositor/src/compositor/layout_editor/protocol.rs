@@ -43,11 +43,36 @@ impl CalloopData {
                     .layouts
                     .get_mut(&value.output)
                     .ok_or("unknown clock output")?;
-                if layout.clock_date_format != value.value {
+                if let Some(id) = value.id {
+                    if layout.widget_kind(&id) == Some("clock")
+                        && layout.widget_clock_date_format(&id) == value.value
+                    {
+                        return Ok(());
+                    }
+                    layout.set_widget_clock_date_format(&id, value.value)?;
+                } else {
+                    let clocks: Vec<_> = layout
+                        .widgets
+                        .instances()
+                        .filter(|instance| {
+                            instance.kind() == hearthspace_common::widgets::WidgetKind::Clock
+                        })
+                        .map(|instance| instance.id().to_string())
+                        .collect();
+                    if layout.clock_date_format == value.value
+                        && clocks
+                            .iter()
+                            .all(|id| layout.widget_clock_date_format(id) == value.value)
+                    {
+                        return Ok(());
+                    }
                     layout.clock_date_format = value.value;
-                    self.state.reconcile_layout_editor();
-                    self.state.layout_changed();
+                    for id in clocks {
+                        layout.set_widget_clock_date_format(&id, value.value)?;
+                    }
                 }
+                self.state.reconcile_layout_editor();
+                self.state.layout_changed();
                 return Ok(());
             }
             if let Some(value) = text.strip_prefix("frame-focus-region ") {
@@ -138,15 +163,22 @@ impl CalloopData {
                 {
                     return Err("invalid popup surface".into());
                 }
-                let target = Target {
-                    output: value.output,
-                    target: value.target,
-                };
-                self.state.check_layout_target(&target)?;
-                self.state
-                    .layout_editor
-                    .popup_anchors
-                    .insert(value.app_id, target);
+                if self.state.frame_output_rect(&value.output).is_none() {
+                    return Err("unknown popup output".into());
+                }
+                if let Some(target) = value.target {
+                    let target = Target {
+                        output: value.output,
+                        target,
+                    };
+                    self.state.check_layout_target(&target)?;
+                    self.state
+                        .layout_editor
+                        .popup_anchors
+                        .insert(value.app_id, target);
+                } else {
+                    self.state.layout_editor.popup_anchors.remove(&value.app_id);
+                }
                 return Ok(());
             }
             Err("invalid layout command".into())

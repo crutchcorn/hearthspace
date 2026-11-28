@@ -12,6 +12,9 @@ impl CalloopData {
         if !self.running || !self.capture_active() || self.state.session_locked() {
             return Some(ControlReply::Err("Desktop is inactive".into()));
         }
+        if let Some(reply) = self.run_widget_context_command(text) {
+            return Some(reply);
+        }
         let Some((command, generation)) = text.split_once(' ') else {
             return Some(ControlReply::Err("Invalid desktop menu command".into()));
         };
@@ -37,7 +40,13 @@ impl CalloopData {
         };
         if !app.desktop_context_source_available()
             || context.ids.iter().any(|id| {
-                if app.desktop.context.source_window.is_some() {
+                if let Some(widget) = id.strip_prefix("widget:") {
+                    context
+                        .output
+                        .as_deref()
+                        .and_then(|output| app.widget_kind(output, widget))
+                        .is_none()
+                } else if app.desktop.context.source_window.is_some() {
                     !app.app_context_item_available(id)
                 } else {
                     app.desktop_index(id).is_none()

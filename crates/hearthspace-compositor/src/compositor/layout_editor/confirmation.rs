@@ -31,7 +31,12 @@ impl App {
         if self.layout_editor.allow_hide_tools {
             return false;
         }
-        if target.target == LayoutTarget::widget("tools") {
+        if !self.target_placement(target).is_frame() {
+            return false;
+        }
+        if target.target.kind == TargetKind::Widget
+            && self.widget_kind(&target.output, &target.target.id) == Some("tools")
+        {
             return true;
         }
         target.target.kind == TargetKind::Group
@@ -40,7 +45,12 @@ impl App {
                 .layouts
                 .get(&target.output)
                 .and_then(|layout| layout.groups.get(&target.target.id))
-                .is_some_and(|group| group.members.contains(&LayoutTarget::widget("tools")))
+                .is_some_and(|group| {
+                    group.members.iter().any(|member| {
+                        member.kind == TargetKind::Widget
+                            && self.widget_kind(&target.output, &member.id) == Some("tools")
+                    })
+                })
     }
 
     fn layout_current_focus_id(&self) -> Option<u64> {

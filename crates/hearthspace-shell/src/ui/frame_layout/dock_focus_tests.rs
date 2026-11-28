@@ -1,5 +1,6 @@
 //! Enter through the compositor's frame focus boundary, never by focusing a button directly.
 use super::*;
+use crate::ui::frame_layout::fixture;
 use crate::ui::frame_layout::{FocusRequest, focus, task::Request, widgets};
 use std::{
     io::{Read, Write},
@@ -12,12 +13,12 @@ use tokio::sync::mpsc;
 fn frame_view(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    let chain = &state.frame_layout.chains[&widget_key("eDP-1", "apps")];
+    let chain = &state.frame_layout.chains[&fixture::key(state, "eDP-1", "apps")];
     sized_box(focus::boundary(
         widgets::content(
             state,
             &state.outputs[0],
-            "apps",
+            &fixture::id(state, state.outputs[0].key(), "apps"),
             false,
             false,
             Default::default(),
@@ -25,7 +26,7 @@ fn frame_view(
         ),
         chain.clone(),
         "eDP-1".into(),
-        LayoutTarget::widget("apps"),
+        fixture::target(state, "eDP-1", "apps"),
         state.frame_layout.snapshot.focus_request.clone(),
     ))
 }
@@ -47,7 +48,7 @@ fn enter<V: WidgetView<ShellState>>(
     ui.state.frame_layout.snapshot.focus_request = Some(FocusRequest {
         serial,
         output: "eDP-1".into(),
-        target: LayoutTarget::widget("apps"),
+        target: fixture::target(&ui.state, "eDP-1", "apps"),
         reverse,
     });
     ui.rebuild(build);
@@ -70,14 +71,14 @@ fn requests(state: &mut ShellState) -> mpsc::Receiver<Request> {
     receiver
 }
 
-fn assert_leave(requests: &mut mpsc::Receiver<Request>, reverse: bool) {
+fn assert_leave(requests: &mut mpsc::Receiver<Request>, reverse: bool, state: &ShellState) {
     let request = std::iter::from_fn(|| requests.try_recv().ok())
         .find(|request| request.command.starts_with("frame-focus-next "))
         .expect("frame boundary exit");
     let value: serde_json::Value =
         serde_json::from_str(request.command.strip_prefix("frame-focus-next ").unwrap()).unwrap();
     assert_eq!(value["output"], "eDP-1");
-    assert_eq!(value["target"]["id"], "apps");
+    assert_eq!(value["target"]["id"], fixture::id(state, "eDP-1", "apps"));
     assert_eq!(value["reverse"], reverse);
 }
 
@@ -142,7 +143,7 @@ fn native_forward_focus_activates_dock_and_shift_tab_exits_its_boundary() {
     assert!(ui.state.windows[0].focused);
     ui.harness.press_tab_key(true);
     ui.dispatch(&frame_view);
-    assert_leave(&mut requests, true);
+    assert_leave(&mut requests, true, &ui.state);
     server.join().unwrap();
 }
 
@@ -177,7 +178,7 @@ fn native_frame_focus_keeps_dock_activation_independent_of_tray_menu() {
     assert!(!ui.state.outputs[0].tray.open);
     ui.harness.press_tab_key(true);
     ui.dispatch(&frame_view);
-    assert_leave(&mut requests, true);
+    assert_leave(&mut requests, true, &ui.state);
     server.join().unwrap();
 }
 
@@ -211,7 +212,7 @@ fn partial_last_page_retains_pager_focus_for_repeated_keyboard_activation() {
     assert_eq!(ui.harness.focused_widget_id(), Some(ui.button("Apps List")));
     ui.harness.press_tab_key(false);
     ui.dispatch(&frame_view);
-    assert_leave(&mut requests, false);
+    assert_leave(&mut requests, false, &ui.state);
 }
 
 #[test]
@@ -243,6 +244,6 @@ fn compact_cycle_retains_actual_button_focus_after_frame_entry_and_repeated_ente
     assert_eq!(ui.harness.focused_widget_id(), Some(cycle));
     ui.harness.press_tab_key(true);
     ui.dispatch(&frame_view);
-    assert_leave(&mut requests, true);
+    assert_leave(&mut requests, true, &ui.state);
     server.join().unwrap();
 }

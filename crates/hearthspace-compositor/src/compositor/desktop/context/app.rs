@@ -2,7 +2,7 @@
 use crate::compositor::{
     App, CalloopData, ManagedWindowKind, shell_integration::ControlReply, windows::window_app_id,
 };
-use hearthspace_common::{desktop_context, frame_layout, launcher_output_name_from_app_id};
+use hearthspace_common::{desktop_context, launcher_output_name_from_app_id};
 use smithay::utils::{Logical, Point, Rectangle};
 
 #[derive(serde::Deserialize)]
@@ -182,7 +182,7 @@ impl App {
             return false;
         };
         launcher_output_name_from_app_id(&id).is_some()
-            || frame_layout::frame_widget_from_app_id(&id).is_some_and(|(_, id)| id == "apps")
+            || self.widget_kind_for_window(index) == Some("apps")
     }
 
     fn app_context_anchor(
@@ -235,7 +235,9 @@ impl App {
     pub(in crate::compositor) fn desktop_context_source_available(&self) -> bool {
         self.desktop.context.source_window.is_none_or(|id| {
             self.windows.iter().enumerate().any(|(index, window)| {
-                window.id == id && window.mapped && self.app_context_source_kind(index)
+                window.id == id
+                    && window.mapped
+                    && (self.app_context_source_kind(index) || self.widget_context_source(index))
             })
         })
     }
@@ -286,7 +288,9 @@ impl App {
         let Some(index) = self.windows.iter().position(|w| w.id == id && w.mapped) else {
             return false;
         };
-        if !self.navigation_available() || !self.app_context_source_kind(index) {
+        if !self.navigation_available()
+            || !(self.app_context_source_kind(index) || self.widget_context_source(index))
+        {
             return false;
         }
         let Some(surface) = self.windows[index].surface.wl_surface() else {

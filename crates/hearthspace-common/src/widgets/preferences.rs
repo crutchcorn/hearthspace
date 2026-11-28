@@ -8,6 +8,8 @@ pub const MAX_DATE_FORMAT_BYTES: usize = 128;
 #[serde(deny_unknown_fields)]
 pub struct Preferences {
     pub expanded_details: bool,
+    #[serde(default)]
+    pub hide_when_unavailable: bool,
     /// Renderer-specific formatting remains external; this core bounds its input.
     pub clock_date_format: Option<String>,
 }

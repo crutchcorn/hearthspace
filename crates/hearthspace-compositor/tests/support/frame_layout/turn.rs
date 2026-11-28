@@ -1,8 +1,9 @@
 //! A mixed group keeps one grip and final shape while native members reflow asynchronously.
 use super::*;
+use crate::frame_widgets;
 use hearthspace_common::frame_layout::{
-    FrameEdge, FrameGroup, FrameLayout, LayoutTarget, ObjectPlacement, TargetKind, WIDGETS,
-    frame_group_app_id, frame_group_grip_app_id, frame_widget_app_id,
+    FrameEdge, FrameGroup, LayoutTarget, ObjectPlacement, TargetKind, frame_group_app_id,
+    frame_group_grip_app_id,
 };
 
 fn group(state: &Value) -> &Value {
@@ -19,7 +20,7 @@ fn widget(state: &Value, id: &str) -> Value {
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == id)
+        .find(|widget| widget["kind"] == id)
         .unwrap()
         .clone()
 }
@@ -57,20 +58,14 @@ fn frame_layout_mixed_group_turn_waits_for_native_reflow_and_preserves_external_
     let _guard = headless_test_guard();
     let saved = tempfile::tempdir().unwrap();
     let path = saved.path().join("layout.json");
-    let mut model = FrameLayout {
-        allow_hide_tools: true,
-        ..Default::default()
-    };
-    for id in WIDGETS {
-        model.set_placement(&LayoutTarget::widget(*id), ObjectPlacement::Hidden);
-    }
+    let mut model = frame_widgets::only(&["clock", "tools", "apps", "tray"]);
     model.groups.insert(
         "mixed".into(),
         FrameGroup {
             id: "mixed".into(),
             members: ["clock", "tools", "apps", "tray"]
                 .into_iter()
-                .map(LayoutTarget::widget)
+                .map(|kind| frame_widgets::model_target(&model, kind))
                 .collect(),
         },
     );
@@ -100,25 +95,25 @@ fn frame_layout_mixed_group_turn_waits_for_native_reflow_and_preserves_external_
         .to_owned();
     let mut client = connect(&compositor);
     let clock = client.add(
-        frame_widget_app_id(Some(&output), "clock"),
+        frame_widgets::app_id(&compositor, Some(&output), "clock"),
         (80, 44),
         (0, 0),
         COLOR,
     );
     let tools = client.add(
-        frame_widget_app_id(Some(&output), "tools"),
+        frame_widgets::app_id(&compositor, Some(&output), "tools"),
         (132, 44),
         (0, 0),
         COLOR,
     );
     let apps = client.add(
-        frame_widget_app_id(Some(&output), "apps"),
+        frame_widgets::app_id(&compositor, Some(&output), "apps"),
         (88, 44),
         (0, 0),
         COLOR,
     );
     let tray = client.add(
-        frame_widget_app_id(Some(&output), "tray"),
+        frame_widgets::app_id(&compositor, Some(&output), "tray"),
         (88, 44),
         (0, 0),
         COLOR,
@@ -191,20 +186,28 @@ fn frame_layout_pending_group_turn_stops_when_a_member_is_hidden_or_destroyed() 
     let _guard = headless_test_guard();
     let saved = tempfile::tempdir().unwrap();
     let path = saved.path().join("layout.json");
-    let mut model = FrameLayout {
-        allow_hide_tools: true,
-        ..Default::default()
-    };
-    for id in WIDGETS {
-        model.set_placement(&LayoutTarget::widget(*id), ObjectPlacement::Hidden);
-    }
+    let mut model = frame_widgets::only(&["tools", "tray"]);
+    // This fixture exercises an automatically hidden service widget. Explicit
+    // user-added copies instead retain their empty placeholder.
+    let tray_identity = model.widget_id("tray").unwrap().parse().unwrap();
+    let mut preferences = model
+        .widgets
+        .get(tray_identity)
+        .unwrap()
+        .preferences()
+        .clone();
+    preferences.hide_when_unavailable = true;
+    model
+        .widgets
+        .set_preferences(tray_identity, preferences)
+        .unwrap();
     model.groups.insert(
         "mixed".into(),
         FrameGroup {
             id: "mixed".into(),
             members: ["tools", "tray"]
                 .into_iter()
-                .map(LayoutTarget::widget)
+                .map(|kind| frame_widgets::model_target(&model, kind))
                 .collect(),
         },
     );
@@ -234,13 +237,13 @@ fn frame_layout_pending_group_turn_stops_when_a_member_is_hidden_or_destroyed() 
         .to_owned();
     let mut client = connect(&compositor);
     let tools = client.add(
-        frame_widget_app_id(Some(&output), "tools"),
+        frame_widgets::app_id(&compositor, Some(&output), "tools"),
         (132, 44),
         (0, 0),
         COLOR,
     );
     let tray = client.add(
-        frame_widget_app_id(Some(&output), "tray"),
+        frame_widgets::app_id(&compositor, Some(&output), "tray"),
         (88, 44),
         (0, 0),
         COLOR,
@@ -322,7 +325,7 @@ fn frame_layout_turn_press_uses_the_held_native_pose_and_click_release_restores_
         .to_owned();
     let mut client = connect(&compositor);
     let tools = client.add(
-        frame_widget_app_id(Some(&output), "tools"),
+        frame_widgets::app_id(&compositor, Some(&output), "tools"),
         (150, 54),
         (0, 0),
         COLOR,
@@ -334,7 +337,7 @@ fn frame_layout_turn_press_uses_the_held_native_pose_and_click_release_restores_
     command(
         &compositor,
         "place",
-        json!({"kind":"widget","id":"tools"}),
+        frame_widgets::target(&compositor, "tools"),
         json!({"surface":"frame","edge":"left","position":0.5}),
     );
     thread::sleep(Duration::from_millis(350));
@@ -351,7 +354,7 @@ fn frame_layout_turn_press_uses_the_held_native_pose_and_click_release_restores_
     let pressed = layout(&compositor);
     assert_eq!(
         pressed["selected"]["target"],
-        json!({"kind":"widget","id":"tools"}),
+        frame_widgets::target(&compositor, "tools"),
         "{pressed}"
     );
     assert_eq!(
@@ -365,7 +368,8 @@ fn frame_layout_turn_press_uses_the_held_native_pose_and_click_release_restores_
     action(&compositor, "pointer-button-up 272");
     let restored = layout(&compositor);
     assert_eq!(
-        restored["outputs"][0]["layout"]["placements"]["widget:tools"]["edge"],
+        restored["outputs"][0]["layout"]["placements"]
+            [format!("widget:{}", frame_widgets::id(&compositor, "tools"))]["edge"],
         "left"
     );
     assert_eq!(client.size(tools), (150, 54));

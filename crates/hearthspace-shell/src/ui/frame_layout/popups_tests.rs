@@ -89,7 +89,10 @@ pub(in crate::ui) fn deferred_keyboard_search(mut apply_request: impl FnMut(&mut
     )
     .unwrap();
     assert_eq!(anchor["output"], "HDMI-A-1");
-    assert_eq!(anchor["target"]["id"], "apps");
+    assert!(
+        anchor["target"].is_null(),
+        "keyboard launcher remains available without any widget"
+    );
     assert_eq!(
         anchor["app_id"],
         hearthspace_common::launcher_app_id_for_request(Some("HDMI-A-1"), 2)

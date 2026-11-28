@@ -12,6 +12,15 @@ pub struct DesktopContext {
     pub max_height: i32,
 }
 
+impl DesktopContext {
+    pub fn widget_id(&self) -> Option<&str> {
+        let [id] = self.ids.as_slice() else {
+            return None;
+        };
+        id.strip_prefix("widget:")
+    }
+}
+
 pub fn app_id(generation: u64, output: Option<&str>) -> String {
     let base = output.map_or_else(
         || APP_ID.to_owned(),
