@@ -90,6 +90,7 @@ fn every_active_app_has_an_icon_without_a_container_button() {
                 vertical,
                 &chain,
                 false,
+                state.appearance.palette,
             ))
         };
         let mut state = state();
@@ -127,8 +128,13 @@ fn every_active_app_has_an_icon_without_a_container_button() {
 
 #[test]
 fn touch_hold_on_app_icon_opens_its_menu_and_root_back_closes_it() {
-    let icon =
-        |state: &ShellState| sized_box(tray_button::icon("eDP-1", &state.tray.snapshot.items[0]));
+    let icon = |state: &ShellState| {
+        sized_box(tray_button::icon(
+            "eDP-1",
+            &state.tray.snapshot.items[0],
+            state.appearance.palette,
+        ))
+    };
     let mut ui = Ui::new(state(), &icon, (34, 34));
     let event = touch_event();
     ui.harness

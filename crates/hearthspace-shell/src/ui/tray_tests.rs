@@ -252,7 +252,11 @@ fn pointer_release_does_not_activate_a_replacement_tray_item() {
     fn icon(
         state: &ShellState,
     ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-        sized_box(tray_button::icon("eDP-1", &state.tray.snapshot.items[0]))
+        sized_box(tray_button::icon(
+            "eDP-1",
+            &state.tray.snapshot.items[0],
+            state.appearance.palette,
+        ))
     }
     let mut ui = Ui::new(state(), icon, (34, 34));
     ui.harness.mouse_move_to(name(&ui, "App 1"));
@@ -274,7 +278,11 @@ fn queued_activation_cannot_target_a_replacement_icon() {
     fn icon(
         state: &ShellState,
     ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-        sized_box(tray_button::icon("eDP-1", &state.tray.snapshot.items[0]))
+        sized_box(tray_button::icon(
+            "eDP-1",
+            &state.tray.snapshot.items[0],
+            state.appearance.palette,
+        ))
     }
     let mut ui = Ui::new(state(), icon, (34, 34));
     ui.activate(name(&ui, "App 1"));
