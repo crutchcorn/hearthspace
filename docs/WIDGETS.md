@@ -1,7 +1,7 @@
 # Widgets, canvas, and frame
 
-This page defines the widget model being introduced. Until the implementation
-lands, [Shell controls](SHELL.md) describes the current interface.
+Widgets are independently placed shell controls. [Shell controls](SHELL.md)
+describes their interface and the starter frame arrangement.
 
 ## The desk analogy
 
@@ -41,10 +41,14 @@ require a dock or another launcher instance to be present.
 
 ## Placement and removal
 
-Right-click empty canvas and choose **Add widget**, then choose a kind. The new
-instance appears at that canvas location. The menu remains the recovery path
-when every widget has been removed. Keyboard invocation of the canvas context
-menu must offer the same actions.
+Right-click empty canvas and choose **Add Widget…** to open canvas search with
+an internal widgets-only filter. The filter is not shown as a search token or a
+separate menu. Type a widget name, then activate its add result. Ordinary canvas
+search also includes those add results alongside its other results. Each
+activation adds a new copy at the search's original canvas location.
+
+The context menu remains available when every widget has been removed. The
+Menu key or Shift+F10 opens it from the keyboard on empty canvas.
 
 **Change layout** moves an instance between canvas and frame, using the existing
 edge guides and grouping interactions. Canvas widgets move and zoom with the
@@ -70,8 +74,32 @@ shell owns accessible widget controls and their menus. Existing desktop services
 remain the owners of app discovery, notifications, and device state. Multiple
 widgets observe those services without creating competing service owners.
 
-Existing saved layouts require an explicit migration: preserve placements
-and groups while assigning instance identities, and do not recreate
-removed widgets at startup or when an output reconnects. Installed-app canvas
-shortcuts may stop being generated without removing applications, favorites,
-Desktop files, or their saved positions.
+Existing saved layouts migrate placements, groups, and preferences to instance
+identities. Widgets previously hidden stay removed. Automatic installed-app
+icons disappear; explicitly placed app shortcuts remain. Applications,
+favorites, Desktop files, and their saved positions are preserved.
+
+## Search and instance identity
+
+The editable search query contains only what the user types. The widgets-only
+scope is session state, independent of query text. Clearing the query does not
+clear that scope; a normal search starts with the full scope. Leaving the picker
+restores the previously selected canvas tool.
+
+Search entries such as `widget:clock` describe add actions in the catalog. They
+are not placed instance identities. Layout status publishes a widget's opaque
+`id`, its `kind`, and whether its native surface is `mapped`. Find a capability
+by kind, then send the returned instance ID when editing that copy. Do not use
+its kind as a layout target or assume a kind appears only once.
+
+Instance IDs contain a saved namespace and monotonic sequence. Retiring a copy
+keeps the sequence advanced, including when the collection becomes empty. The
+widget collection owns identity and per-copy preferences; the existing frame
+layout remains the sole placement and group owner for widgets, files, and
+windows. Save those owners together. Moving a widget does not create another
+placement record or a second service owner.
+
+The starter battery and application tray retain their automatic absence policy.
+Explicitly added copies remain visible when their service has no data, showing
+an unavailable state or an empty tray placeholder so they can still be placed
+or removed.

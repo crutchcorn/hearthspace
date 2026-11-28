@@ -7,6 +7,13 @@ The default layout places independent native controls in four corners on each ou
 - **Bottom left — Canvas tools:** a chooser for [desktop-item selection](DESKTOP_ITEMS.md), [Pan canvas](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse), and [canvas search](CANVAS_SEARCH.md), followed by window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
 - **Bottom right — App dock and Apps List:** favorite and running apps, plus the installed-app browser.
 
+These controls are [widget instances](WIDGETS.md). Right-click empty canvas and
+choose **Add Widget…** to search the widget catalog. Regular canvas search also
+offers **Add …** results. Every activation creates an independent copy, including
+when that kind already exists on the frame. The separate **App launcher** widget
+opens Apps List from the canvas or frame without requiring an app dock.
+Right-click a canvas widget for **Change Layout…** or **Remove Widget**.
+
 These positions are a starting arrangement. **Change layout** lets you keep a
 folder at an edge, move the clock beside the dock, or place controls on the
 canvas. An edge attachment stays in reach while you pan; an object on the canvas
@@ -85,7 +92,7 @@ using the existing hardware readings. Battery details appear in the Battery
 dropdown. Missing hardware has an explicit unavailable state. The clock dropdown
 shows the current month. Its **Date format** menu offers Time only, Weekday,
 Short date, Numeric date and Long date, with live previews. Choosing a format
-returns to the calendar and saves that output's clock preference. Time remains
+returns to the calendar and saves that clock instance's preference. Time remains
 24-hour; the same choices are available in Change layout.
 
 ## Canvas tools
@@ -128,7 +135,7 @@ whole strip; select a member to change its options or choose **Separate**.
 **Ungroup** releases all members. Groups remain flat, so merging two strips
 produces one ordered strip rather than nested groups.
 Moving a group onto Canvas or Background releases its members at their displayed
-positions. Removing a group hides its controls and returns its windows and desktop
+positions. Removing a group retires its widgets and returns its windows and desktop
 items to the canvas; it does not close applications or delete files. Ordinary
 window movement does not attach a window to the frame: placement changes belong
 to Change layout.
@@ -147,11 +154,13 @@ starting layout and exits editing. Tab and Shift+Tab navigate native editor
 controls, with pressed placement buttons, radio choices for clock formats, and
 keyboard focus rings. Drawing is not part of the layout editor.
 
-Layout, detail visibility, clock format and group membership persist per output.
+Layout and group membership persist per output. Detail visibility and clock
+format belong to each widget instance.
 Reopened windows recover attachments through their existing application slots.
 Settings → System can permit hiding Canvas tools and restore them. Until that
-permission is enabled, removing the tools opens an explanation with a Settings
-link. Search remains a way to find and restore hidden controls.
+permission is enabled, removing frame tools opens an explanation with a Settings
+link. Canvas copies can be removed directly. Search remains a way to add new
+widget copies after removal.
 
 ## Popup ownership
 
@@ -179,6 +188,8 @@ Unlocked `status.shell_corners` describes legacy corner surfaces when present, w
 frame surfaces instead. Use `layout-status` for their measured bounds, orientation,
 visibility and group identity, plus pinned windows, editor selection and animation
 state. These bounds use global output-logical coordinates.
+Each widget reports an opaque `id`, catalog `kind`, and `mapped` native-surface
+state. Commands target the returned instance ID; kinds can have multiple copies.
 
 `canvas-tool select|pan|search|group|layout` explicitly selects a tool; repeating
 the same choice does not toggle it off. `layout-status.canvas_tool` reports the
@@ -189,6 +200,8 @@ commands remain supported.
 clock format without opening Change layout. Values are `none`, `weekday`, `short`,
 `numeric` and `long`. It uses the normal navigation guards and persists with that
 output's layout; invalid outputs or formats are rejected.
+Add an `id` from `layout-status` to change only that clock copy. Without `id`,
+the command updates the output default and its current clocks.
 
 Unlocked `status.shell_panels` lists visible panel bounds as `kind`, `output`,
 `x`, `y`, `width`, and `height`. Kinds are `search`, `notifications`, `map`,

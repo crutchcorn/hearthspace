@@ -52,6 +52,13 @@ application has no visible frame geometry, but its preference survives. Confirme
 pinned-window close deliberately removes the preference. See
 [window management](WINDOW_MANAGEMENT.md).
 
+Shell widgets have persisted instance identities independent of their kind,
+output, or live native surface. The shared widget store owns identity and
+per-copy preferences; `FrameLayout` remains the single placement and group owner
+for widgets, desktop items, and windows. Adding from search creates another copy;
+removal retires it permanently. Existing singleton layouts migrate at the disk
+boundary. See [Widgets](WIDGETS.md) for the desk analogy and lifecycle contract.
+
 ## Input admission and sequence ownership
 
 Input policy evaluates the action, source, and admission phase. Starting canvas

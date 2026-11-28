@@ -3,7 +3,10 @@
 The default canvas shows files and folders from the user's configured XDG
 Desktop directory, including shortcuts placed there. Installed applications
 remain in Apps List, search, and favorites; discovering or installing an app
-does not create a canvas icon. See [Widgets](WIDGETS.md) for addable desktop tools.
+does not create a canvas icon. Existing shortcuts explicitly placed with Change
+layout retain their placement; automatic catalog shortcuts are hidden. App
+results acquire temporary search cards instead of permanent desktop surfaces.
+See [Widgets](WIDGETS.md) for addable desktop tools.
 
 ## Select and move
 
