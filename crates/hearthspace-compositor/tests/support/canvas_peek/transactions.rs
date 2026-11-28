@@ -64,9 +64,10 @@ fn resize_from_top_left(
     client: &mut InteractiveClient,
     id: u64,
 ) -> (f64, f64) {
-    // The initial client buffer is 240px wide; SSD has a 260px minimum
-    // outer width. Resizing starts from that visible outer rectangle.
+    // Start from the committed 240px frame, independently of the 260px
+    // minimum used for subsequent resize requests.
     let foreground = window(compositor, id);
+    assert_eq!(foreground["width"], 240);
     let point = (
         foreground["x"].as_f64().unwrap() + 120.0,
         foreground["y"].as_f64().unwrap() + 100.0,
@@ -101,7 +102,7 @@ fn canvas_peek_resize_release_waits_for_the_delayed_final_shrink() {
     client.sync();
     assert_eq!(
         geometry(&window(&compositor, foreground)),
-        [200, 200, 560, 460]
+        [200, 200, 540, 460]
     );
     assert_eq!(geometry(&window(&compositor, covered)), original);
 
@@ -111,14 +112,15 @@ fn canvas_peek_resize_release_waits_for_the_delayed_final_shrink() {
     action(&compositor, "pointer-button-up 272");
     assert_eq!(
         geometry(&window(&compositor, foreground)),
-        [200, 200, 560, 460]
+        [200, 200, 540, 460]
     );
     assert_eq!(geometry(&window(&compositor, covered)), original);
 
     client.sync();
+    // The resize minimum is 260, while the fixed right edge remains at 740.
     assert_eq!(
         geometry(&window(&compositor, foreground)),
-        [500, 500, 260, 160]
+        [480, 500, 260, 160]
     );
     assert_eq!(geometry(&window(&compositor, covered)), original);
     assert!(!client.configuration(1).1);
@@ -145,7 +147,7 @@ fn canvas_peek_delayed_final_resize_commit_reanchors_then_settles() {
     client.sync();
     assert_eq!(
         geometry(&window(&compositor, foreground)),
-        [200, 200, 560, 460]
+        [200, 200, 540, 460]
     );
     let revealed = wait_position(&compositor, covered, 200, 176);
     assert_eq!(geometry(&revealed), [200, 176, 240, 160]);
@@ -166,7 +168,7 @@ fn canvas_peek_committed_resize_settles_without_waiting_for_release_state_ack() 
     client.sync();
     assert_eq!(
         geometry(&window(&compositor, foreground)),
-        [200, 200, 560, 460]
+        [200, 200, 540, 460]
     );
     assert_eq!(geometry(&window(&compositor, covered)), original);
     action(&compositor, "pointer-button-up 272");
@@ -179,7 +181,7 @@ fn canvas_peek_committed_resize_settles_without_waiting_for_release_state_ack() 
     assert_eq!(geometry(&window(&compositor, covered)), geometry(&revealed));
     assert_eq!(
         geometry(&window(&compositor, foreground)),
-        [200, 200, 560, 460]
+        [200, 200, 540, 460]
     );
     shutdown(compositor);
 }

@@ -123,6 +123,7 @@ struct ManagedWindow {
     /// Bounding-box size of the window's surface tree, cached on commit so the
     /// per-frame rendering and hit-testing paths don't re-walk the tree.
     content_bbox_size: Size<i32, Logical>,
+    content_bbox_loc: Point<i32, Logical>,
     mapped: bool,
     initial_placement_done: bool,
     initial_output_name: Option<String>,

@@ -235,14 +235,14 @@ fn titlebar_pinned_controls_match_paint_before_the_client_handles_its_resize() {
         let original = window(&compositor, id);
         assert_eq!(original["content_width"], 240);
         assert_eq!(
-            original["width"], 260,
-            "floating chrome has a minimum width"
+            original["width"], 240,
+            "floating chrome must match the committed content"
         );
         click(&compositor, button_point(&original, true));
 
         // Deliberately do not dispatch the client's configure: the current
-        // output-pinned frame is still its 240px committed content, although its
-        // floating chrome was 260px. Painting must use the pinned hit geometry.
+        // output-pinned frame still matches its 240px committed content.
+        // Painting must use the pinned hit geometry before the client resizes.
         let pending = window(&compositor, id);
         assert_eq!(pending["maximized"], true);
         assert_eq!(pending["focused_view"], true);
@@ -255,8 +255,8 @@ fn titlebar_pinned_controls_match_paint_before_the_client_handles_its_resize() {
         let mut data = vec![0; reader.output_buffer_size().unwrap()];
         let info = reader.next_frame(&mut data).unwrap();
         // One logical pixel inside the left edge, at its vertical center,
-        // avoids the glyph and cursor. Stretching the 260px raster moves this
-        // red edge three pixels right, away from its actual clickable region.
+        // avoids the glyph and cursor. The rendered hover must cover the same
+        // rectangle that accepts the close button's input.
         let x = ((close.0 - 15.0) * f64::from(output_scale)) as usize;
         let y = (close.1 * f64::from(output_scale)) as usize;
         let offset = (y * info.width as usize + x) * info.color_type.samples();

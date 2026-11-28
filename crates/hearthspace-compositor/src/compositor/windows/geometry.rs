@@ -76,7 +76,7 @@ pub(super) fn title_bar_canvas_rect_for(
 ) -> Rectangle<i32, Logical> {
     Rectangle::new(
         (position.x, position.y).into(),
-        (content_width.max(MIN_WINDOW_WIDTH), TITLE_BAR_HEIGHT).into(),
+        (content_width.max(1), TITLE_BAR_HEIGHT).into(),
     )
 }
 
@@ -101,18 +101,14 @@ pub(super) fn content_canvas_origin_for(
 
 /// Full canvas-space bounds of a window given its position, client content size
 /// and whether the compositor draws server-side chrome (a title bar above the
-/// content). The width tracks the title bar, which is clamped to a minimum.
+/// content). Match committed content, even below the resize-request minimum.
 pub(super) fn window_canvas_rect_for(
     position: CanvasPoint,
     content_size: Size<i32, Logical>,
     has_chrome: bool,
 ) -> Rectangle<i32, Logical> {
     let title_bar_height = if has_chrome { TITLE_BAR_HEIGHT } else { 0 };
-    let width = if has_chrome {
-        content_size.w.max(MIN_WINDOW_WIDTH)
-    } else {
-        content_size.w
-    };
+    let width = content_size.w.max(1);
     Rectangle::new(
         (position.x, position.y).into(),
         (width, content_size.h + title_bar_height).into(),
@@ -187,9 +183,9 @@ mod tests {
     }
 
     #[test]
-    fn title_bar_clamps_to_minimum_window_width() {
+    fn title_bar_matches_small_committed_content() {
         let rect = title_bar_canvas_rect_for(point(0, 0), 10);
-        assert_eq!(rect.size.w, MIN_WINDOW_WIDTH);
+        assert_eq!(rect.size.w, 10);
     }
 
     #[test]
@@ -268,9 +264,9 @@ mod tests {
     }
 
     #[test]
-    fn window_rect_width_clamps_to_minimum_with_chrome() {
+    fn window_rect_matches_small_committed_content_with_chrome() {
         let rect = window_canvas_rect_for(point(0, 0), size(10, 200), true);
-        assert_eq!(rect.size.w, MIN_WINDOW_WIDTH);
+        assert_eq!(rect.size.w, 10);
     }
 
     #[test]

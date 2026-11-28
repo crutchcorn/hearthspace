@@ -124,6 +124,7 @@ impl XdgShellHandler for App {
             decoration: decoration_for_new_window(kind),
             titlebar: None,
             content_bbox_size: Size::default(),
+            content_bbox_loc: Default::default(),
             mapped: false,
             initial_placement_done: false,
             initial_output_name: spawn_output_name.clone(),

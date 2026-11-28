@@ -649,6 +649,16 @@ impl XState {
         server_state: &mut super::RealServerState,
         window: x::Window,
     ) -> XResult<()> {
+        let state = self.connection.wait_for_reply(self.get_property_cookie(
+            window,
+            self.atoms.net_wm_state,
+            x::ATOM_ATOM,
+            1024,
+        ))?;
+        let fullscreen = state.format() == 32
+            && state.bytes_after() == 0
+            && state.value::<x::Atom>().contains(&self.atoms.wm_fullscreen);
+        server_state.set_initial_fullscreen(window, fullscreen);
         let mut title = self.get_net_wm_name(window)?;
         if title.is_none() {
             title = self.get_wm_name(window)?;

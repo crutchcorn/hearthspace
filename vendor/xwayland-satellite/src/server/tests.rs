@@ -2386,7 +2386,7 @@ fn tablet_smoke_test() {
 }
 
 #[test]
-fn fullscreen_heuristic() {
+fn initial_fullscreen_requires_explicit_state() {
     let (mut f, comp) = TestFixture::new_with_compositor();
     let (_, output) = f.new_output(0, 0);
 
@@ -2395,21 +2395,29 @@ fn fullscreen_heuristic() {
     f.testwl.move_surface_to_output(id, &output);
     f.run();
 
-    let mut check_fullscreen = |id, override_redirect| {
+    let mut check_fullscreen = |id, initial_fullscreen| {
         let window = Window::new(id);
         let (buffer, surface) = comp.create_surface();
+        // An ordinary output-sized window stays windowed; an explicit request
+        // works even when its initial dimensions are smaller than the output.
+        let (width, height) = if initial_fullscreen {
+            (400, 300)
+        } else {
+            (1000, 1000)
+        };
         let data = WindowData {
             mapped: true,
             dims: WindowDims {
                 x: 0,
                 y: 0,
-                // Outputs default to 1000x1000 in testwl
-                width: 1000,
-                height: 1000,
+                width,
+                height,
             },
             fullscreen: false,
         };
-        f.new_window(window, override_redirect, data);
+        f.new_window(window, false, data);
+        f.satellite
+            .set_initial_fullscreen(window, initial_fullscreen);
         f.map_window(&comp, window, &surface.obj, &buffer);
         f.run();
         let id = f.check_new_surface();
@@ -2425,12 +2433,26 @@ fn fullscreen_heuristic() {
             panic!("Expected toplevel, got {:?}", surface_data.role);
         };
 
-        assert!(
+        assert_eq!(
             toplevel_data
                 .states
                 .contains(&xdg_toplevel::State::Fullscreen),
+            initial_fullscreen,
             "states: {:?}",
             toplevel_data.states
+        );
+        // Role creation precedes the first configured client-buffer commit.
+        let states = toplevel_data.states.clone();
+        f.testwl
+            .configure_toplevel(id, width.into(), height.into(), states);
+        f.run();
+        assert!(
+            f.testwl
+                .get_surface_data(id)
+                .unwrap()
+                .window_geometry
+                .is_some(),
+            "the configured client must commit XDG window geometry"
         );
     };
 

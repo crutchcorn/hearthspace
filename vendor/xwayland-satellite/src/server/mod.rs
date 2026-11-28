@@ -113,6 +113,7 @@ struct WindowAttributes {
     dims: WindowDims,
     size_hints: Option<WmNormalHints>,
     frame_extents: Option<frame_extents::Extents>,
+    initial_fullscreen: bool,
     title: Option<WmName>,
     class: Option<String>,
     group: Option<x::Window>,
@@ -933,6 +934,16 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
         self.windows.insert(window, id);
     }
 
+    pub fn set_initial_fullscreen(&mut self, window: x::Window, fullscreen: bool) {
+        if let Some(id) = self.windows.get(&window).copied() {
+            self.world
+                .get::<&mut WindowData>(id)
+                .unwrap()
+                .attrs
+                .initial_fullscreen = fullscreen;
+        }
+    }
+
     pub fn set_override_redirect(&mut self, window: x::Window, override_redirect: bool) {
         let Some(id) = self.windows.get(&window).copied() else {
             debug!(
@@ -1436,7 +1447,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
     fn create_role_window(&mut self, window: x::Window, entity: Entity) -> bool {
         let xdg_surface;
         let mut popup_for = None;
-        let mut fullscreen = false;
+        let fullscreen;
         let splash;
 
         {
@@ -1453,13 +1464,11 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
             }
             splash = window_data.attrs.role == WindowRole::Splash;
 
-            let (width, height) = (window_data.attrs.dims.width, window_data.attrs.dims.height);
-            for (_, dimensions) in self.world.query::<&OutputDimensions>().iter() {
-                if dimensions.width == width as i32 && dimensions.height == height as i32 {
-                    fullscreen = true;
-                    popup_for = None;
-                    break;
-                }
+            // Output-sized windows are not necessarily fullscreen. In particular,
+            // Steam can map ordinary helper windows at the output dimensions.
+            fullscreen = window_data.attrs.initial_fullscreen;
+            if fullscreen {
+                popup_for = None;
             }
         }
 

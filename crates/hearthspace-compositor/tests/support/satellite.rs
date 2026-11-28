@@ -348,3 +348,6 @@ fn satellite_far_canvas_position_keeps_client_input_usable() {
     let _guard = headless_test_guard();
     canvas_click((50_000, 60_000));
 }
+
+#[path = "satellite/steam_regressions.rs"]
+mod steam_regressions;

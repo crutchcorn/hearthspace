@@ -181,3 +181,17 @@ requires a matching live primary-button grab before starting the operation.
 Explicit nonprimary buttons and keyboard operations remain unsupported. This is
 a local compatibility repair, not an upstream backport; pin, version and notices
 are unchanged. See the patch ledger for regression and removal requirements.
+
+## Explicit initial fullscreen state
+
+The [explicit-fullscreen patch](../../patches/satellite-explicit-fullscreen.patch)
+reads initial `_NET_WM_STATE_FULLSCREEN` and removes the output-dimension guess.
+An ordinary output-sized Steam/helper window must not hide the shell or disable
+canvas navigation. Explicit initial fullscreen remains supported even when the
+client initially has a smaller buffer. This is a local EWMH compatibility repair
+against the existing pin, not an upstream backport. Package version, revision,
+notices, and all other repairs remain unchanged. See the patch ledger for real
+X11 regressions and removal conditions. The old heuristic unit-test expectation
+is replaced with explicit-state cases.
+The test-only compositor also applies XDG window geometry on commit so those
+tests can exercise mapped clients instead of panicking on that request.

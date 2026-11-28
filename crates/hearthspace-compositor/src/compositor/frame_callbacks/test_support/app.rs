@@ -76,6 +76,7 @@ impl AppFixture {
             decoration: WindowDecoration::ClientSide,
             titlebar: None,
             content_bbox_size: geometry.size,
+            content_bbox_loc: geometry.loc,
             mapped: true,
             initial_placement_done: true,
             initial_output_name: None,

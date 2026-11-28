@@ -1105,3 +1105,34 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   cursor-surface interoperability, and pointer removal.
 - **Removal:** remove only this patch when a compatible Smithay version reports
   the required error and passes those protocol regressions without it.
+
+## Satellite explicit initial fullscreen
+
+- **Dependency:** vendored Satellite 0.8.3 at `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [explicit fullscreen](satellite-explicit-fullscreen.patch), relative
+  to `vendor/xwayland-satellite`, applied after the existing repairs. It changes
+  `src/server/{mod.rs,tests.rs}`, `src/xstate/mod.rs`, and the test-only
+  `testwl/src/lib.rs` compositor fixture.
+- **Reason:** matching an output's dimensions is not a fullscreen request.
+  Steam can map ordinary helper windows at exactly those dimensions, causing
+  shell suppression and unavailable canvas navigation. Conversely an explicit
+  initial fullscreen request need not start with an output-sized buffer.
+- **Behavior:** read the initial `_NET_WM_STATE_FULLSCREEN` property at mapping;
+  use that state when creating the XDG toplevel. Keep existing mapped-window
+  EWMH fullscreen messages. No system Xwayland patch or app-specific class rule.
+- **Upstream basis:** narrow local change against the pinned source, not a
+  claimed upstream backport. Package version, pin, and notices are unchanged.
+- **Regression:** `headless_control` filter `satellite::steam_regressions` uses
+  real X11 clients and Satellite/Xwayland to check ordinary output-sized windows,
+  canvas zoom/resize admission, and smaller clients with explicit initial
+  fullscreen plus restore. It also covers committed XDG geometry clamping in
+  Hearthspace; that compositor fix is outside this Satellite patch.
+  The vendored `initial_fullscreen_requires_explicit_state` unit test replaces
+  the old heuristic expectation with both explicit-state cases. Standalone
+  vendor tests have a separate lockfile from the workspace checks.
+  The test compositor accepts positive XDG window geometry on commit and clears
+  it when the XDG role is destroyed; it previously panicked on that valid request.
+- **Removal:** remove only this repair after a compatible upstream version
+  passes both initial-state cases without the dimension heuristic. Preserve
+  other patches until their own removal conditions are satisfied. Fixture source
+  alone does not establish passing runtime or native Steam acceptance.

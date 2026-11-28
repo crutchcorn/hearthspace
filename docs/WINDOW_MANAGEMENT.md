@@ -72,6 +72,8 @@ view. Activating another app, canvas search, or the layout editor leaves focused
 view and keeps the previous app maximized on the canvas.
 
 Application-requested fullscreen (such as F11) and Super+F remain separate.
+An X11 window matching a monitor’s dimensions does not itself request
+fullscreen; explicit initial or later fullscreen requests are required.
 Fullscreen uses the entire output at native scale and suppresses server
 decorations. A smaller fullscreen client buffer is centered against an opaque
 black background. Leaving fullscreen returns to the preceding focused or
@@ -90,7 +92,10 @@ runtime and are inherited by directly launched and portal-activated applications
 They do not add unsupported minimize behavior or modify another desktop's settings.
 
 Applications that request compositor decorations receive a 44-logical-pixel
-title bar with maximize/restore and close controls. Each control is 32×32, with
+title bar with maximize/restore and close controls. Its frame follows the current committed
+client geometry, even when an updater or fixed-size dialog is smaller than the
+normal resize-request minimum. Window geometry cannot extend beyond its
+committed surface-tree bounds. Each control is 32×32, with
 a four-pixel gap and six pixels of padding at the right edge. Painting and hit
 testing use the same rectangles; canvas zoom scales both, while output-pinned
 windows retain their native logical size.

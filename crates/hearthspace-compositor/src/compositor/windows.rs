@@ -333,6 +333,7 @@ impl App {
         if let Some(root) = self.windows[window_index].surface.wl_surface() {
             let bbox = bbox_from_surface_tree(&root, Point::<i32, Logical>::from((0, 0)));
             self.windows[window_index].content_bbox_size = bbox.size;
+            self.windows[window_index].content_bbox_loc = bbox.loc;
         }
     }
 
@@ -618,7 +619,7 @@ impl App {
             );
         }
         let window = &self.windows[window_index];
-        title_bar_canvas_rect_for(window.position, window.content_bbox_size.w)
+        title_bar_canvas_rect_for(window.position, self.window_geometry_size(window_index).w)
     }
 
     pub(super) fn titlebar_button_screen_rect(
@@ -666,10 +667,13 @@ impl App {
             return rect.loc + Point::from((0, chrome))
                 - self.window_surface_geometry_loc(window_index);
         }
-        content_canvas_origin_for(
-            self.windows[window_index].position,
-            self.has_compositor_chrome(window_index),
-        )
+        let chrome = self.has_compositor_chrome(window_index);
+        let origin = content_canvas_origin_for(self.windows[window_index].position, chrome);
+        if chrome {
+            origin - self.window_surface_geometry_loc(window_index)
+        } else {
+            origin
+        }
     }
 
     pub(super) fn has_compositor_chrome(&self, window_index: usize) -> bool {
@@ -709,7 +713,11 @@ impl App {
             return Rectangle::new(rect.loc, (size.w, size.h + chrome).into());
         }
         if self.has_compositor_chrome(window_index) {
-            return window_canvas_rect_for(window.position, window.content_bbox_size, true);
+            return window_canvas_rect_for(
+                window.position,
+                self.window_geometry_size(window_index),
+                true,
+            );
         }
         let surface_origin = self.content_canvas_origin(window_index);
         let geometry_loc = self.window_surface_geometry_loc(window_index);
@@ -738,13 +746,25 @@ impl App {
 
     pub(super) fn window_surface_geometry_loc(&self, window_index: usize) -> Point<i32, Logical> {
         match &self.windows[window_index].surface {
-            ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
+            ManagedSurface::Xdg(surface) => toplevel_geometry_loc(
+                surface.wl_surface(),
+                Rectangle::new(
+                    self.windows[window_index].content_bbox_loc,
+                    self.windows[window_index].content_bbox_size,
+                ),
+            ),
         }
     }
 
     fn window_surface_geometry_size(&self, window_index: usize) -> Option<Size<i32, Logical>> {
         match &self.windows[window_index].surface {
-            ManagedSurface::Xdg(surface) => toplevel_geometry_size(surface.wl_surface()),
+            ManagedSurface::Xdg(surface) => toplevel_geometry_size(
+                surface.wl_surface(),
+                Rectangle::new(
+                    self.windows[window_index].content_bbox_loc,
+                    self.windows[window_index].content_bbox_size,
+                ),
+            ),
         }
     }
 }
