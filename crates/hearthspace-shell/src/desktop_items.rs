@@ -1,15 +1,12 @@
-//! Installed application shortcuts and real objects from the XDG desktop folder.
+//! Real files and shortcuts from the configured XDG desktop folder.
 //!
 //! Discovery reads directory metadata only. File contents and application icons
 //! are never decoded on the UI thread or as part of a directory refresh.
 use std::{
-    collections::HashSet,
     fs, io,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
-
-use hearthspace_desktop::app_catalog::AppCatalog;
 
 pub mod actions;
 pub(crate) mod artwork;
@@ -43,34 +40,11 @@ pub fn desktop_directory() -> Option<PathBuf> {
     (directory.is_absolute() && Some(&directory) != dirs::home_dir().as_ref()).then_some(directory)
 }
 
-pub fn discover(catalog: &AppCatalog, directory: Option<&Path>) -> io::Result<Vec<DesktopItem>> {
-    let mut items = match directory {
-        Some(directory) => files(directory)?,
-        None => Vec::new(),
-    };
-    let mut seen = HashSet::new();
-    items.extend(catalog.apps().iter().filter_map(|app| {
-        let id = format!("app:{}", app.id);
-        // Share the compositor namespace's identity validation. Invalid catalog
-        // keys cannot create a surface the compositor mistakes for an app window.
-        if !seen.insert(id.clone())
-            || hearthspace_common::desktop_item_id_from_app_id(
-                &hearthspace_common::desktop_item_app_id(&id),
-            )
-            .is_none()
-        {
-            return None;
-        }
-        Some(DesktopItem {
-            id,
-            title: app.name.clone(),
-            kind: DesktopItemKind::App {
-                app_id: app.id.clone(),
-                icon: app.icon.clone(),
-            },
-        })
-    }));
-    Ok(items)
+pub fn discover(directory: Option<&Path>) -> io::Result<Vec<DesktopItem>> {
+    match directory {
+        Some(directory) => files(directory),
+        None => Ok(Vec::new()),
+    }
 }
 
 fn files(directory: &Path) -> io::Result<Vec<DesktopItem>> {

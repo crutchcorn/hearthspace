@@ -51,15 +51,14 @@ pub(super) fn discover(
     directory: Option<&Path>,
     previous: &[DesktopItem],
 ) -> (AppCatalog, Vec<DesktopItem>, Option<String>) {
-    let (mut items, mut error) = match desktop_items::discover(&catalog, directory) {
+    let (mut items, mut error) = match desktop_items::discover(directory) {
         Ok(items) => (items, None),
         Err(error) => {
-            let mut items: Vec<_> = previous
+            let items: Vec<_> = previous
                 .iter()
                 .filter(|item| !matches!(item.kind, DesktopItemKind::App { .. }))
                 .cloned()
                 .collect();
-            items.extend(desktop_items::discover(&catalog, None).unwrap_or_default());
             (
                 items,
                 Some(format!("Desktop folder is unavailable: {error}")),

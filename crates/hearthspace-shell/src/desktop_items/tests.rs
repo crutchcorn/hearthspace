@@ -1,4 +1,5 @@
 use super::*;
+use hearthspace_desktop::app_catalog::AppCatalog;
 use std::{
     ffi::OsString,
     os::unix::{ffi::OsStringExt, fs::symlink},
@@ -20,7 +21,7 @@ fn catalog(directory: &Path) -> AppCatalog {
 }
 
 #[test]
-fn catalog_shortcuts_remain_complete_when_personal_files_change() {
+fn installed_apps_stay_in_catalog_without_creating_desktop_shortcuts() {
     let fixture = tempfile::tempdir().unwrap();
     let catalog = catalog(fixture.path());
     let desktop = fixture.path().join("Desktop");
@@ -28,22 +29,22 @@ fn catalog_shortcuts_remain_complete_when_personal_files_change() {
     fs::create_dir(desktop.join("Projects")).unwrap();
     fs::write(desktop.join("Notes.txt"), "notes").unwrap();
     fs::write(desktop.join(".private"), "hidden").unwrap();
-    let initial = discover(&catalog, Some(&desktop)).unwrap();
+    let initial = discover(Some(&desktop)).unwrap();
     assert_eq!(
         initial
             .iter()
             .map(|item| item.title.as_str())
             .collect::<Vec<_>>(),
-        ["Projects", "Notes.txt", "Editor", "Files"]
+        ["Projects", "Notes.txt"]
     );
     assert!(matches!(initial[0].kind, DesktopItemKind::Folder { .. }));
     assert!(matches!(initial[1].kind, DesktopItemKind::File { .. }));
     fs::remove_file(desktop.join("Notes.txt")).unwrap();
-    let updated = discover(&catalog, Some(&desktop)).unwrap();
-    assert_eq!(&updated[1..], &initial[2..]);
-    // Favorites are deliberately absent from discovery: even an empty favorite
-    // list cannot remove the permanent installed-app representations.
-    assert_eq!(discover(&catalog, None).unwrap(), initial[2..]);
+    let updated = discover(Some(&desktop)).unwrap();
+    assert_eq!(updated, initial[..1]);
+    assert!(discover(None).unwrap().is_empty());
+    assert!(catalog.app_by_id("editor.desktop").is_some());
+    assert!(catalog.app_by_id("files.desktop").is_some());
 }
 
 #[test]
@@ -57,7 +58,7 @@ fn desktop_objects_preserve_byte_identity_and_do_not_read_file_contents() {
         .set_len(10 * 1024 * 1024 * 1024)
         .unwrap();
     fs::write(&second, []).unwrap();
-    let items = discover(&AppCatalog::default(), Some(directory)).unwrap();
+    let items = discover(Some(directory)).unwrap();
     assert_eq!(items.len(), 2);
     assert_ne!(items[0].id, items[1].id);
     assert!(
@@ -73,14 +74,10 @@ fn desktop_objects_preserve_byte_identity_and_do_not_read_file_contents() {
 }
 
 #[test]
-fn removed_desktop_folder_does_not_remove_installed_apps_or_create_files() {
+fn removed_desktop_folder_is_empty_and_does_not_create_files() {
     let fixture = tempfile::tempdir().unwrap();
-    let catalog = catalog(fixture.path());
     let missing = fixture.path().join("missing");
-    assert_eq!(
-        discover(&catalog, Some(&missing)).unwrap(),
-        discover(&catalog, None).unwrap()
-    );
+    assert_eq!(discover(Some(&missing)).unwrap(), discover(None).unwrap());
     assert!(!missing.exists());
     assert!(open_path(Path::new("/unused/socket"), &missing, None).is_err());
 }
@@ -95,7 +92,7 @@ fn linked_folders_are_items_without_recursively_enumerating_their_children() {
     fs::write(projects.join("secret.txt"), "not a desktop item").unwrap();
     symlink(&projects, desktop.join("Projects")).unwrap();
     symlink(fixture.path().join("missing"), desktop.join("Broken")).unwrap();
-    let items = discover(&AppCatalog::default(), Some(&desktop)).unwrap();
+    let items = discover(Some(&desktop)).unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].title, "Projects");
     assert!(matches!(items[0].kind, DesktopItemKind::Folder { .. }));
