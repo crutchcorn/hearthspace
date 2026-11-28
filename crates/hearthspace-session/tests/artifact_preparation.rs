@@ -57,9 +57,19 @@ impl Fixture {
         // No built sibling helper can accidentally make a clean-start test pass.
         let source = env!("CARGO_BIN_EXE_hearthspace-session");
         let destination = root.join("bin/hearthspace-session");
-        fs::hard_link(source, &destination)
-            .or_else(|_| fs::copy(source, &destination).map(|_| ()))
-            .unwrap();
+        if fs::hard_link(source, &destination).is_err() {
+            // /tmp may be on another filesystem. Copy in a child so concurrent
+            // test spawns cannot inherit a writable destination descriptor and
+            // briefly prevent exec with ETXTBSY, even after fs::copy returns.
+            assert!(
+                Command::new("/usr/bin/cp")
+                    .args(["--", source])
+                    .arg(&destination)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
         Self {
             artifact: root.join("custom target/debug/hearthspace-app-scope-guard"),
             locker_artifact: root.join("custom target/debug/hearthspace-lock"),
