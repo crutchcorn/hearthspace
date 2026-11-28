@@ -60,7 +60,9 @@ def widget_surface(status, widget):
     if "frame_layout" not in status:
         return corner_surface(status, WIDGET_CORNERS[widget])
     layout = output_layout(status)
-    matches = [item for item in layout["widgets"] if item["id"] == widget]
+    matches = [
+        item for item in layout["widgets"] if item.get("kind", item["id"]) == widget
+    ]
     if not matches:
         raise ControlError(f"{widget} frame widget is not mapped")
     if len(matches) != 1 or matches[0].get("hidden"):

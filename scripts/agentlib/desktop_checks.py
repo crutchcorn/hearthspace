@@ -72,15 +72,48 @@ def opened(smoke, title):
     smoke.until("desktop app closed", lambda: smoke.window(window["id"]) is None)
 
 
-def run(smoke):
-    first, second = "app:a-terminal.desktop", "app:b-editor.desktop"
+def open_catalog_app(smoke, app_id, name, title):
+    smoke.control.request("canvas-search-open")
+    current = smoke.control.query("canvas-search-status")
+    smoke.control.request(
+        "canvas-search-update "
+        + json.dumps({"session": current["session"], "query": name})
+    )
+    selector = f"//*[@role='button' and @name='{name} Open application']"
     smoke.until(
-        "installed apps and files mapped", lambda: len(desktop(smoke)["items"]) == 5
+        "catalog app search card", lambda: a11y(smoke, "find", selector)["elements"]
+    )
+    require(
+        any(
+            result["id"] == f"app:{app_id}" and result["kind"] == "app"
+            for result in smoke.control.query("canvas-search-status")["results"]
+        ),
+        "installed app was not searchable without a desktop icon",
+    )
+    a11y(smoke, "activate", selector)
+    opened(smoke, title)
+    smoke.until(
+        "search presentation returned",
+        lambda: not smoke.control.query("canvas-search-status")["scene"],
+    )
+    with Input(smoke.control) as inputs:
+        inputs.chord("meta+v")
+    smoke.until("desktop selection restored", lambda: desktop(smoke)["select_mode"])
+
+
+def run(smoke):
+    first, second = (f"file:{name.encode().hex()}" for name in ("Projects", "Pictures"))
+    smoke.until(
+        "Desktop folder contents mapped", lambda: len(desktop(smoke)["items"]) == 3
     )
     before = desktop(smoke)
     require(
         {entry["id"] for entry in before["items"]} >= {first, second},
-        "catalog shortcut missing",
+        "Desktop folder item missing",
+    )
+    require(
+        not any(entry["id"].startswith("app:") for entry in before["items"]),
+        "installed catalog apps created default desktop icons",
     )
     require(
         not smoke.control.status()["windows"],
@@ -91,7 +124,7 @@ def run(smoke):
     with Input(smoke.control) as inputs:
         inputs.drag(10, 100, 230, 530, duration=0)
     require(
-        len(selected(smoke)) == 5, "marquee did not select intersecting desktop items"
+        len(selected(smoke)) == 3, "marquee did not select intersecting desktop items"
     )
     smoke.capture("desktop-marquee-selection")
     with Input(smoke.control) as inputs:
@@ -167,21 +200,21 @@ def run(smoke):
         "Space selects focused icon", lambda: selected(smoke) == {focused["id"]}
     )
 
-    click(smoke, first)
-    # A deliberate gap keeps this keyboard activation independent of doubleclick.
-    with Input(smoke.control) as inputs:
-        inputs.chord("enter")
-    opened(smoke, "DESKTOP_TERMINAL")
-    time.sleep(0.4)
-    with Input(smoke.control) as inputs:
-        inputs.click(*point(smoke, item(smoke, second)))
-        inputs.click(*point(smoke, item(smoke, second)))
-    opened(smoke, "DESKTOP_EDITOR")
-
     display = smoke.until(
         "XWayland ready for default application",
         lambda: smoke.control.status().get("xwayland_display"),
     )
+    click(smoke, first)
+    # A deliberate gap keeps this keyboard activation independent of doubleclick.
+    with Input(smoke.control) as inputs:
+        inputs.chord("enter")
+    opened(smoke, "DESKTOP_FILE")
+    time.sleep(0.4)
+    with Input(smoke.control) as inputs:
+        inputs.click(*point(smoke, item(smoke, second)))
+        inputs.click(*point(smoke, item(smoke, second)))
+    opened(smoke, "DESKTOP_FILE")
+
     for name in ["Notes.txt", "Pictures"]:
         click(smoke, f"file:{name.encode().hex()}")
         with Input(smoke.control) as inputs:
@@ -197,7 +230,7 @@ def run(smoke):
                 "paths": [str(smoke.service_fixture.desktop / name)],
                 "display": display,
             }
-            for name in ["Notes.txt", "Pictures"]
+            for name in ["Projects", "Pictures", "Notes.txt", "Pictures"]
         ],
         "default application did not receive the exact desktop paths and session display",
     )
@@ -234,41 +267,20 @@ def run(smoke):
     )
     set_viewport(smoke, x=0, y=0, scale=1)
 
-    click(smoke, first)
-    origin = position(item(smoke, first))
-    from .shell_surfaces import corner_surface, observed_status
-
-    apps = corner_surface(observed_status(smoke), "apps")
-    x, y = point(smoke, item(smoke, first))
-    with Input(smoke.control) as inputs:
-        inputs.drag(x, y, apps["x"] + apps["width"] - 27, apps["y"] + 27)
-    favorites = smoke.service_fixture.favorites
-    smoke.until(
-        "desktop favorite saved",
-        lambda: (
-            favorites.is_file()
-            and any(
-                favorite["app_id"] == "a-terminal.desktop"
-                for favorite in json.loads(favorites.read_text())["favorites"]
-            )
-        ),
-    )
+    open_catalog_app(smoke, "a-terminal.desktop", "Terminal", "DESKTOP_TERMINAL")
+    open_catalog_app(smoke, "b-editor.desktop", "Editor", "DESKTOP_EDITOR")
     require(
-        position(item(smoke, first)) == origin,
-        "favoriting moved or consumed desktop shortcut",
+        not any(entry["id"].startswith("app:") for entry in desktop(smoke)["items"]),
+        "app search left a permanent desktop shortcut",
     )
-    require(
-        not smoke.control.status()["windows"], "favorite drop also launched the app"
-    )
-    smoke.capture("desktop-favorite-keeps-shortcut")
 
-    # Removing a personal file updates only that item, retaining app identities
-    # and user placements through catalog reconciliation.
+    # Directory refresh retains the other file identities and user placements.
     previous = position(item(smoke, first))
     (smoke.service_fixture.desktop / "Notes.txt").unlink()
-    smoke.until("removed file disappears", lambda: len(desktop(smoke)["items"]) == 4)
+    smoke.until("removed file disappears", lambda: len(desktop(smoke)["items"]) == 2)
     require(
-        position(item(smoke, first)) == previous, "catalog refresh moved app shortcut"
+        position(item(smoke, first)) == previous,
+        "directory refresh moved another folder",
     )
     smoke.record(
         "desktop-verified",
@@ -282,7 +294,8 @@ def run(smoke):
         zoom=True,
         edge_pan=True,
         live_directory=True,
-        favorite_drop=True,
+        catalog_search=True,
+        default_apps_hidden=True,
         marquee=True,
     )
     positions = {

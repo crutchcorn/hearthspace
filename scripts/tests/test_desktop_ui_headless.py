@@ -84,7 +84,7 @@ def services(directory, _evidence, env, _deadline):
 
 @unittest.skipUnless(os.environ.get("HEARTHSPACE_E2E") == "1", "set HEARTHSPACE_E2E=1")
 class DesktopUiHeadlessTests(unittest.TestCase):
-    def test_shortcuts_select_move_open_and_survive_favoriting(self):
+    def test_files_select_move_open_and_catalog_apps_remain_searchable(self):
         with tempfile.TemporaryDirectory(prefix="hs-desktop-ui-") as temporary:
             directory = Path(temporary)
             root = os.environ.get("HEARTHSPACE_SHELL_EVIDENCE")
@@ -121,7 +121,7 @@ class DesktopUiHeadlessTests(unittest.TestCase):
             def restored(smoke):
                 smoke.until(
                     "desktop icons restored",
-                    lambda: len(desktop_status(smoke)["items"]) == 5,
+                    lambda: len(desktop_status(smoke)["items"]) == 3,
                 )
                 for entry in desktop_status(smoke)["items"]:
                     if entry["id"] in positions:
