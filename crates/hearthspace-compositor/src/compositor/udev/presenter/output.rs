@@ -199,6 +199,8 @@ impl Output {
             )
             .ok_or("presenter renderer has no framebuffer formats")?;
         let cursor_caps = drm.cursor_size();
+        // Smithay tests the pending mode and primary framebuffer together with
+        // ALLOW_MODESET | TEST_ONLY before this constructor succeeds on atomic KMS.
         let mut compositor = Compositor::new(
             OutputModeSource::Static {
                 size: config.size,

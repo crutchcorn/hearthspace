@@ -128,6 +128,12 @@ impl Widget for MaterialWidget {
             disabled: ctx.is_disabled() || self.child_disabled,
         };
         match self.material {
+            Material::Dialog => super::paint_dialog_with_palette(
+                painter,
+                ctx.border_box(),
+                ctx.has_hovered() || ctx.has_focus_target(),
+                &palette,
+            ),
             Material::FormButton(variant) => {
                 crate::controls::style::button(painter, ctx.border_box(), variant, state, &palette)
             }

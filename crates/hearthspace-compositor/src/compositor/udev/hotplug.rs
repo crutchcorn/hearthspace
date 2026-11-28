@@ -263,7 +263,7 @@ impl UdevBackendState {
         }
     }
 
-    fn refresh_device(&mut self, id: u64, retry_unpresented: bool) -> bool {
+    pub(super) fn refresh_device(&mut self, id: u64, retry_unpresented: bool) -> bool {
         let Some(device) = self.opened_devices.get_mut(&id) else {
             return false;
         };
@@ -273,7 +273,8 @@ impl UdevBackendState {
             device.active = true;
         }
         let targets = match device.connected_output_targets(&mut self.connector_names) {
-            Ok((targets, complete)) => {
+            Ok((mut targets, complete)) => {
+                self.mode_settings.select(&mut targets);
                 device.discovery_complete = complete;
                 targets
             }

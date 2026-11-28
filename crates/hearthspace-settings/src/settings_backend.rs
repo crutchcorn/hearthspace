@@ -21,6 +21,7 @@ const SAVING: &str = "Saving monitor layout…";
 
 #[derive(Default)]
 pub(crate) struct DisplayLayoutState {
+    pub(crate) modes: crate::display_modes::State,
     pub(crate) sender: Option<UnboundedSender<LayoutRequest>>,
     revision: u64,
     pending: Option<u64>,

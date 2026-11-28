@@ -99,6 +99,7 @@ pub fn run_udev(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     let mut backend = UdevBackendState {
+        mode_settings: super::modes::State::load(),
         session,
         seat_name,
         session_active,

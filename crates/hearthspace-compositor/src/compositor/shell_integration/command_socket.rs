@@ -110,6 +110,20 @@ impl CalloopData {
         {
             return ControlReply::Err("session is locked".into());
         }
+        #[cfg(not(feature = "udev"))]
+        if text == "display-modes" {
+            return ControlReply::Payload(
+                serde_json::to_vec(&hearthspace_ipc::display_modes::Snapshot::default()).unwrap(),
+            );
+        }
+        #[cfg(not(feature = "udev"))]
+        if text.starts_with("display-mode ") {
+            return ControlReply::Err("Mode changes require the native display backend.".into());
+        }
+        #[cfg(feature = "udev")]
+        if let Some(reply) = self.run_display_mode_command(text) {
+            return reply;
+        }
         if let Some(path) = text.strip_prefix("wallpaper-preview ") {
             let Ok(path) = serde_json::from_str::<String>(path) else {
                 return ControlReply::Err("Wallpaper failed to load".into());

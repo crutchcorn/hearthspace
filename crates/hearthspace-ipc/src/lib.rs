@@ -25,3 +25,5 @@ pub use settings_wire::{error_response, parse_settings_request, settings_respons
 
 #[cfg(test)]
 mod tests;
+
+pub mod display_modes;

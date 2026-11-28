@@ -17,7 +17,7 @@ sudo apt-get install -y \
   build-essential pkg-config clang libclang-dev \
   libwayland-dev wayland-protocols wayland-utils libinput-dev \
   libxkbcommon-dev libxkbcommon-x11-dev libudev-dev libseat-dev \
-  libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev \
+  libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libxcvt-dev \
   libsystemd-dev libglib2.0-dev libglib2.0-bin libgtk-4-dev \
   libgtk4-session-lock-dev libgtk4-layer-shell-dev libpam0g-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
@@ -204,3 +204,9 @@ sudo apparmor_parser -r /etc/apparmor.d/notify-send
 The profile remains enforced. To undo the addition, remove only the added rules
 and reload it again. Don't replace an administrator's local override or disable
 AppArmor to make a notification test pass. See [notifications](NOTIFICATIONS.md).
+
+
+Native display-mode fallbacks use the system **libxcvt** timing generator.
+`libxcvt-dev` is required when building the compositor with `udev`;
+`libxcvt0` is required at runtime (also used by the owned Xwayland server).
+No display settings, driver parameters, or kernel modules need changing.

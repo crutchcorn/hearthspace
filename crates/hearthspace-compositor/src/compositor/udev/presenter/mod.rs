@@ -98,7 +98,9 @@ pub(super) struct CapturedFrame {
 }
 
 pub(super) enum PresenterEvent {
-    Ready,
+    Ready {
+        atomic: bool,
+    },
     Configured {
         key: OutputKey,
         control_generation: u64,

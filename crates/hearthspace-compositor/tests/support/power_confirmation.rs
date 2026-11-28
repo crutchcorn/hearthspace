@@ -5,8 +5,8 @@ use super::{
     *,
 };
 use hearthspace_common::{
-    POWER_CONFIRM_APP_ID, POWER_MENU_APP_ID, power_confirm_app_id_for_output,
-    shell_bar_app_id_for_output,
+    DISPLAY_MODE_CONFIRM_APP_ID, POWER_CONFIRM_APP_ID, POWER_MENU_APP_ID,
+    power_confirm_app_id_for_output, shell_bar_app_id_for_output,
 };
 use serde_json::Value;
 
@@ -37,6 +37,7 @@ fn touch(compositor: &HeadlessCompositor, x: f64, y: f64) {
 #[case::scaled("2560x1600", 2, (420, 220), (430, 290))]
 #[case::small_scaled("640x480", 2, (272, 192), (24, 24))]
 fn power_confirmation_centers_geometry_and_clamps_with_output_scale(
+    #[values(POWER_CONFIRM_APP_ID, DISPLAY_MODE_CONFIRM_APP_ID)] app_id: &str,
     #[case] output_size: &str,
     #[case] scale: i32,
     #[case] size: (i32, i32),
@@ -65,14 +66,25 @@ fn power_confirmation_centers_geometry_and_clamps_with_output_scale(
     client.destroy(menu);
 
     let dialog = client.add(
-        power_confirm_app_id_for_output(&output),
+        if app_id == DISPLAY_MODE_CONFIRM_APP_ID {
+            hearthspace_common::display_mode_confirm_app_id_for_output(&output)
+        } else {
+            power_confirm_app_id_for_output(&output)
+        },
         (420, 220),
         (8, 6),
         COLOR,
     );
     assert_eq!(client.focus(), Some(dialog));
     assert_eq!(client.size(dialog), size);
-    let bounds = panel(&compositor, "power-confirm");
+    let bounds = panel(
+        &compositor,
+        if app_id == DISPLAY_MODE_CONFIRM_APP_ID {
+            "display-mode-confirm"
+        } else {
+            "power-confirm"
+        },
+    );
     assert_eq!(bounds["output"], output);
     assert_eq!(
         (bounds["x"].as_i64().unwrap(), bounds["y"].as_i64().unwrap()),
@@ -95,8 +107,10 @@ fn power_confirmation_centers_geometry_and_clamps_with_output_scale(
     wait_for_exit(&mut compositor.child);
 }
 
-#[test]
-fn power_confirmation_blocks_background_input_until_escape_is_acknowledged() {
+#[rstest::rstest]
+fn power_confirmation_blocks_background_input_until_escape_is_acknowledged(
+    #[values(POWER_CONFIRM_APP_ID, DISPLAY_MODE_CONFIRM_APP_ID)] app_id: &str,
+) {
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
@@ -124,7 +138,7 @@ fn power_confirmation_blocks_background_input_until_escape_is_acknowledged() {
     let layout = query(&compositor, "layout-status");
     let mut shell = connect(&compositor);
     shell.enable_touch();
-    let dialog = shell.add(POWER_CONFIRM_APP_ID.into(), (420, 220), (8, 6), COLOR);
+    let dialog = shell.add(app_id.into(), (420, 220), (8, 6), COLOR);
     assert_eq!(shell.focus(), Some(dialog));
     assert_eq!(background.focus(), None);
 

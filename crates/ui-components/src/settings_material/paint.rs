@@ -280,3 +280,37 @@ pub fn paint_button_with_palette(
             .draw();
     }
 }
+
+/// System dialog glass. Its backdrop and outer shadow are compositor-owned.
+pub fn paint_dialog_with_palette(
+    painter: &mut Painter<'_>,
+    rect: Rect,
+    active: bool,
+    palette: &Palette,
+) {
+    let radius = 20.0;
+    let shape = rect.inset(-0.5).to_rounded_rect(radius - 0.5);
+    painter
+        .fill(
+            shape,
+            if active {
+                palette.chrome_raised_hover
+            } else {
+                palette.chrome_raised
+            },
+        )
+        .draw();
+    edge_light_with_palette(painter, rect, radius, palette);
+    glass_edge_with_palette(painter, rect, radius, active, palette);
+    painter
+        .stroke(
+            shape,
+            &Stroke::new(1.0),
+            if active {
+                palette.accent_border
+            } else {
+                palette.chrome_border
+            },
+        )
+        .draw();
+}

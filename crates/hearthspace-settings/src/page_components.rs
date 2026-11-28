@@ -18,7 +18,7 @@ pub(crate) use toggle::toggle;
 mod toggle_row;
 pub(crate) use toggle_row::toggle_row;
 mod restore_focus;
-pub(crate) use restore_focus::restore_focus_after_close;
+pub(crate) use restore_focus::{dialog, focus_on_mount, restore_focus_after_close};
 mod disclosure;
 pub(crate) use disclosure::{NavigationControl, NavigationInput, disclosure};
 mod photo_fit;

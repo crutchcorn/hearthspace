@@ -1,5 +1,5 @@
-//! Native power dialogs share modal input policy without opening a layout session.
-use hearthspace_common::power_confirm_output_name_from_app_id;
+//! Centered system confirmations share a scrim, modal input and focus recovery.
+use hearthspace_common::centered_confirmation_output_name_from_app_id;
 use smithay::{
     backend::input::InputTime,
     utils::{Logical, Point, Rectangle, Size},
@@ -17,7 +17,7 @@ impl App {
     pub(in crate::compositor) fn is_power_confirmation(&self, index: usize) -> bool {
         window_app_id(&self.windows[index].surface)
             .as_deref()
-            .and_then(power_confirm_output_name_from_app_id)
+            .and_then(centered_confirmation_output_name_from_app_id)
             .is_some()
     }
 
@@ -120,8 +120,8 @@ impl App {
         if let Some(index) =
             (0..self.windows.len()).find(|&index| self.power_confirmation_surface(index))
         {
-            // Closing is only cancellation. The shell owns explicit power
-            // actions; neither Escape nor a compositor focus change sends one.
+            // Closing is only cancellation. Clients own their explicit actions;
+            // neither Escape nor a compositor focus change confirms anything.
             self.cancel_ui_touch();
             self.windows[index].surface.send_close();
         }

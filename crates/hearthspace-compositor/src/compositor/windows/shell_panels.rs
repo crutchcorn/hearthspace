@@ -206,6 +206,10 @@ impl App {
                     "notifications"
                 } else if power_confirm_output_name_from_app_id(&app_id).is_some() {
                     "power-confirm"
+                } else if hearthspace_common::centered_confirmation_output_name_from_app_id(&app_id)
+                    .is_some()
+                {
+                    "display-mode-confirm"
                 } else if power_menu_output_name_from_app_id(&app_id).is_some() {
                     "power"
                 } else if quick_panel_output_name_from_app_id(&app_id).is_some() {

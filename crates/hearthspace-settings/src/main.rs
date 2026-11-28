@@ -10,6 +10,8 @@ mod background_shader_status;
 mod background_thumbnail;
 mod background_view;
 mod cli;
+mod display_mode_dialog;
+mod display_modes;
 mod display_view;
 mod favorites;
 mod favorites_icons;
@@ -63,6 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.settings.appearance,
             state.settings.has_custom_background(),
         );
+        let confirmation = display_mode_dialog::window(state, properties.clone());
         [window(id, "Hearthspace Settings", app_logic(state))
             .with_default_properties(properties)
             .with_options(|options| {
@@ -74,6 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .on_close(|state: &mut state::SettingsApp| state.running = false)
             })]
         .into_iter()
+        .chain(confirmation)
     })
     .with_default_base_color(xilem::Color::TRANSPARENT)
     .with_default_properties(initial_properties);

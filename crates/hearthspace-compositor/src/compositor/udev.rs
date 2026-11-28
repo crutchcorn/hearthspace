@@ -9,6 +9,7 @@ mod gpu;
 mod hotplug;
 mod identity;
 mod input;
+mod modes;
 mod native_shortcuts;
 mod output_sync;
 mod presentation;
@@ -39,6 +40,7 @@ use smithay::{
 use tracing::{info, warn};
 
 pub(super) struct UdevBackendState {
+    mode_settings: modes::State,
     session: LibSeatSession,
     seat_name: String,
     session_active: bool,

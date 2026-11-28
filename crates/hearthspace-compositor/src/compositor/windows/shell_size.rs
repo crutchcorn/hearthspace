@@ -2,7 +2,7 @@
 //! Apps List retains its requested width, capped to the output's corner margins.
 use hearthspace_common::{
     SHELL_CORNER_CLEARANCE, SHELL_CORNER_MARGIN, canvas_map_output_name_from_app_id,
-    launcher_output_name_from_app_id, power_confirm_output_name_from_app_id,
+    centered_confirmation_output_name_from_app_id, launcher_output_name_from_app_id,
     shell_corner_from_app_id,
 };
 use smithay::{
@@ -54,7 +54,7 @@ impl App {
             .is_some();
         let power_confirmation = app_id
             .as_deref()
-            .and_then(power_confirm_output_name_from_app_id)
+            .and_then(centered_confirmation_output_name_from_app_id)
             .is_some();
         let canvas_map = app_id
             .as_deref()
