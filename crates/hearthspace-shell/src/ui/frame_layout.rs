@@ -55,6 +55,9 @@ pub(super) struct State {
     pub refresh: Arc<Notify>,
     requests: Option<mpsc::Sender<task::Request>>,
     opening_popup: bool,
+    // Scoped to a native widget's message delivery, including composite controls.
+    activation_origin: Option<hearthspace_ipc::frame_layout::Selection>,
+    popup_origin: Option<hearthspace_ipc::frame_layout::Selection>,
     pub intents: popup_intent::Intents,
     availability: Option<tokio::sync::watch::Sender<Vec<(String, String, bool)>>>,
     windows: BTreeMap<String, WindowId>,

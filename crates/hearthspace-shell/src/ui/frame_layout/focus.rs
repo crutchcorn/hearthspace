@@ -137,12 +137,21 @@ impl<V: WidgetView<ShellState>> View<ShellState, (), ViewCtx> for Boundary<V> {
         state: &mut ShellState,
     ) -> MessageResult<()> {
         match ctx.take_first() {
-            Some(CHILD) => self.inner.message(
-                vs,
-                ctx,
-                BoundaryWidget::child_mut(&mut el).downcast(),
-                state,
-            ),
+            Some(CHILD) => {
+                let origin = hearthspace_ipc::frame_layout::Selection {
+                    output: self.output.clone(),
+                    target: self.target.clone(),
+                };
+                let previous = state.frame_layout.activation_origin.replace(origin);
+                let result = self.inner.message(
+                    vs,
+                    ctx,
+                    BoundaryWidget::child_mut(&mut el).downcast(),
+                    state,
+                );
+                state.frame_layout.activation_origin = previous;
+                result
+            }
             None => {
                 if let Some(action) = ctx.take_message::<Leave>() {
                     let reverse = action.0;
