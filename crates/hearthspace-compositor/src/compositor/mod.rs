@@ -176,6 +176,8 @@ enum ManagedWindowKind {
     ShellWatcher,
     /// Passive hardware feedback: screen-space, never an input/focus target.
     ControlOsd,
+    /// Unmanaged X11 screen overlay; excluded from canvas placement and navigation.
+    X11Overlay,
 }
 
 impl ManagedWindowKind {

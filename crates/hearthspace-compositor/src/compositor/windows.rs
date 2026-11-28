@@ -27,6 +27,7 @@ mod hit_testing;
 pub(super) mod identity;
 mod lifecycle;
 mod ordering;
+pub(in crate::compositor) mod overlays;
 mod power_confirmation;
 pub(super) use power_confirmation::PowerConfirmation;
 mod state;
@@ -77,7 +78,11 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
     // X11 class names remain application metadata, even when they resemble
     // a shell role. Satellite exposes all of them through its private client.
     if super::client::is_x11_surface(surface.wl_surface()) {
-        return ManagedWindowKind::Normal;
+        return if overlays::hint_for_toplevel(surface).is_some() {
+            ManagedWindowKind::X11Overlay
+        } else {
+            ManagedWindowKind::Normal
+        };
     }
     let app_id = toplevel_app_id(surface);
     if app_id.as_deref().is_some_and(is_frame_shell_app_id) {
@@ -206,9 +211,9 @@ pub(super) fn position_for_new_window(
     match kind {
         ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
-        ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => {
-            CanvasPoint { x: 0, y: 0 }
-        }
+        ManagedWindowKind::ShellWatcher
+        | ManagedWindowKind::ControlOsd
+        | ManagedWindowKind::X11Overlay => CanvasPoint { x: 0, y: 0 },
         ManagedWindowKind::Launcher => CanvasPoint {
             x: 0,
             y: CONTROL_BAR_HEIGHT,
@@ -223,7 +228,8 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
         | ManagedWindowKind::ShellBar
         | ManagedWindowKind::Launcher
         | ManagedWindowKind::ShellWatcher
-        | ManagedWindowKind::ControlOsd => WindowDecoration::ClientSide,
+        | ManagedWindowKind::ControlOsd
+        | ManagedWindowKind::X11Overlay => WindowDecoration::ClientSide,
     }
 }
 
@@ -231,7 +237,9 @@ impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
         if matches!(
             self.windows[window_index].kind,
-            ManagedWindowKind::ControlOsd | ManagedWindowKind::ShellWatcher
+            ManagedWindowKind::ControlOsd
+                | ManagedWindowKind::ShellWatcher
+                | ManagedWindowKind::X11Overlay
         ) || self.session_locked()
             || (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
             || self.window_switcher_active()
@@ -339,7 +347,11 @@ impl App {
 
     pub(super) fn refresh_normal_window_outputs(&self) {
         for (window_index, window) in self.windows.iter().enumerate() {
-            if window.kind == ManagedWindowKind::DesktopItem && window.mapped {
+            if matches!(
+                window.kind,
+                ManagedWindowKind::DesktopItem | ManagedWindowKind::X11Overlay
+            ) && window.mapped
+            {
                 if let Some(surface) = window.surface.wl_surface() {
                     self.enter_outputs_intersecting(
                         &surface,
@@ -494,7 +506,9 @@ impl App {
                     state.bounds = bar_size;
                     state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
-                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
+                ManagedWindowKind::Launcher
+                | ManagedWindowKind::ControlOsd
+                | ManagedWindowKind::X11Overlay => {
                     // Content measurements arrive as fixed min/max hints. The
                     // palette sizing path then applies the output bounds and
                     // responsive search width.

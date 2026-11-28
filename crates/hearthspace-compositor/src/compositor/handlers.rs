@@ -141,7 +141,12 @@ impl XdgShellHandler for App {
         if kind == ManagedWindowKind::Normal {
             self.idle_daemon.register_window(id);
         }
-        if kind.is_shell_chrome() {
+        if kind == ManagedWindowKind::X11Overlay {
+            if let Some(index) = self.windows.index(id) {
+                let name = self.x11_overlay_output_name(index);
+                self.enter_output(surface.wl_surface(), name.as_deref());
+            }
+        } else if kind.is_shell_chrome() {
             self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
         } else {
             self.enter_output(surface.wl_surface(), spawn_output_name.as_deref());
@@ -338,7 +343,12 @@ impl XdgShellHandler for App {
             return;
         };
         self.reclassify_window(id, kind, shell_output_name.clone());
-        if kind.is_shell_chrome() {
+        if kind == ManagedWindowKind::X11Overlay {
+            if let Some(index) = self.windows.index(id) {
+                let name = self.x11_overlay_output_name(index);
+                self.enter_output(surface.wl_surface(), name.as_deref());
+            }
+        } else if kind.is_shell_chrome() {
             self.enter_shell_output(surface.wl_surface(), shell_output_name.as_deref());
         } else {
             self.enter_output(surface.wl_surface(), None);

@@ -351,3 +351,6 @@ fn satellite_far_canvas_position_keeps_client_input_usable() {
 
 #[path = "satellite/steam_regressions.rs"]
 mod steam_regressions;
+
+#[path = "satellite/overlays.rs"]
+mod overlays;

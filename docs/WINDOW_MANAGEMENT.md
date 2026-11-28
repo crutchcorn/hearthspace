@@ -354,6 +354,16 @@ do not switch the host's TTY. Agents can exercise the native binding through an
 owned uinput keyboard; control-socket key injection remains inside Hearthspace.
 See [native TTY testing](VT_TESTING.md) for recovery and lock checks.
 
+## Application overlays
+
+Qualifying X11 notification and unmanaged utility overlays stay in screen space
+instead of moving or scaling with the canvas. They retain their requested output
+and corner, with clearance from mapped frame widgets and other overlays where
+space permits. Mapping or clicking a toast preserves keyboard focus, and overlays are
+hidden while locked. Ordinary app palettes remain canvas windows or parented
+popups. See [Satellite screen overlays](SATELLITE.md#screen-overlays) for the
+metadata policy and placement limits.
+
 ## Agent control
 
 Use `scripts/hearthspace-agent --session SESSION windows` to obtain stable IDs

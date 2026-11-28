@@ -318,7 +318,7 @@ impl CalloopData {
                 "version": 1, "backend": backend, "active": self.capture_active(),
                 "locked": true, "lock_confirmed": self.state.lock_confirmed(),
                 "recovery_ready": recovery_ready,
-                "scanout": [], "windows": [], "outputs": [], "canvas_maps": [], "shell_panels": [], "shell_corners": [], "control_osds": [],
+                "scanout": [], "windows": [], "outputs": [], "canvas_maps": [], "shell_panels": [], "shell_corners": [], "control_osds": [], "screen_overlays": [],
             }))
             .expect("serializable locked status");
         }
@@ -345,6 +345,7 @@ impl CalloopData {
             "shell_panels": self.state.shell_panels_status(),
             "shell_corners": self.state.shell_corners_status(),
             "control_osds": self.state.control_osds_status(),
+            "screen_overlays": self.state.x11_overlays_status(),
             "favorite_gesture": self.state.favorite_drawing.status(),
             "background_shader": self.state.background_shader.status(&self.state.background_shader_path),
             "viewport": {

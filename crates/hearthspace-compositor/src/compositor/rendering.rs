@@ -305,7 +305,7 @@ impl App {
                 self.is_power_confirmation(*index),
                 self.layout_render_layer(*index).unwrap_or_else(|| {
                     match self.windows[*index].kind {
-                        ManagedWindowKind::ControlOsd => 130,
+                        ManagedWindowKind::ControlOsd | ManagedWindowKind::X11Overlay => 130,
                         ManagedWindowKind::Launcher => 110,
                         ManagedWindowKind::ShellBar | ManagedWindowKind::ShellWatcher => 100,
                         ManagedWindowKind::Normal => 10,
@@ -424,7 +424,9 @@ impl App {
                     self.launcher_screen_origins(index)
                 }
                 ManagedWindowKind::ShellWatcher => Vec::new(),
-                ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => {
+                ManagedWindowKind::Normal
+                | ManagedWindowKind::DesktopItem
+                | ManagedWindowKind::X11Overlay => {
                     vec![projection.origin.to_i32_round().to_physical(1)]
                 }
             };

@@ -155,6 +155,56 @@ transient parent with a live XDG role, falling back to valid hover/focus history
 Popup offsets and EWMH input
 coordinates use that backing root, separately from displayed canvas positions.
 
+## Mapping and serial order
+
+The X11 window and its Wayland surface arrive on independent streams. Satellite
+matches the exact `WL_SURFACE_SERIAL` pair in either order, and creates the host
+role once both the association and X11 mapping exist. Initial buffer attachments
+and frame callbacks wait through association and the host's XDG configure;
+cursors and subsurfaces retain their ordinary forwarding path. Destruction drops
+pending surface content, and a reused XID cannot adopt a prior surface's serial.
+The [association repair](../patches/satellite-surface-association.patch) preserves
+these boundaries without sleeps or a system Xwayland change.
+
+## Screen overlays
+
+Hearthspace places X11 notification windows in output space, independently of
+canvas pan and zoom. An unmanaged utility window qualifies too when it has no
+transient parent and declares all three EWMH states: `ABOVE`, `SKIP_TASKBAR`, and
+`SKIP_PAGER`. The first recognized EWMH window type controls this decision;
+ordinary utilities, menus, and transient palettes retain their existing roles.
+No title or application-name matching is involved.
+
+Satellite translates the requested X root position into an output and corner.
+Hearthspace uses that output's logical coordinates, with its normal 24-pixel
+shell margin, and shifts overlays to clear mapped frame widgets and earlier
+overlays. The stack uses stable window identities. If that output disappears,
+placement falls back to the primary output. Small outputs reduce edge padding;
+when no unobstructed placement fits, the requested corner remains the fallback.
+Client content is never resized merely to fit the safe area.
+
+The optional `xwayland_satellite_overlay_v1` bridge labels an XDG toplevel before
+mapping. Only the authenticated private Satellite connection can see it.
+Metadata belongs to that exact toplevel incarnation, so a remap can choose a new
+corner without inheriting the previous role. Other compositors keep Satellite's
+existing role heuristics when they do not advertise the extension. This small
+bridge reuses XDG lifecycle and input handling rather than giving ordinary
+applications shell-layer privileges.
+
+Overlays do not enter canvas navigation or take keyboard focus when mapped or
+clicked. They receive normal pointer input and remain hidden while locked; destruction
+cannot redirect a held release into the window underneath. Status reports their
+logical rectangles in `screen_overlays`, separately from ordinary canvas windows.
+These application-drawn windows do not become notification-service messages or
+history entries. `notify-send` exercises the separate
+[desktop notification service](NOTIFICATIONS.md), not a client's custom toast.
+
+Real-client regressions use generic X11 metadata through Satellite and the private
+Xwayland. They cover screen-space pan/zoom, scaling, clicks, role exclusions,
+stacking, frame clearance, destruction, and remapping. App/protocol tests cover
+secondary-output routing, fallback output-enter events, and private-global visibility. These
+headless checks do not establish native Steam presentation or physical input.
+
 ## Input routing and verification
 
 The private server carries the

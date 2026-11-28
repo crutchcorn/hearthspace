@@ -27,7 +27,7 @@ impl App {
                     match self.windows[*index].kind {
                         ManagedWindowKind::DesktopItem => 1,
                         ManagedWindowKind::Normal => 10,
-                        ManagedWindowKind::ControlOsd => 130,
+                        ManagedWindowKind::ControlOsd | ManagedWindowKind::X11Overlay => 130,
                         _ => 110,
                     }
                 }),
@@ -49,8 +49,13 @@ impl App {
             if self.modal_confirmation_active() && !self.modal_confirmation_surface(window_index) {
                 continue;
             }
+            let output_name = if window.kind == ManagedWindowKind::X11Overlay {
+                self.x11_overlay_output_name(window_index)
+            } else {
+                window.shell_output_name.clone()
+            };
             let output = self
-                .output_logical_rect_for_name(window.shell_output_name.as_deref())
+                .output_logical_rect_for_name(output_name.as_deref())
                 .unwrap_or_else(|| self.primary_output_logical_rect());
             if !self.window_visible_on_output(window_index, output) {
                 continue;
@@ -104,7 +109,7 @@ impl App {
                     continue;
                 }
                 ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => continue,
-                ManagedWindowKind::Normal => {}
+                ManagedWindowKind::Normal | ManagedWindowKind::X11Overlay => {}
             }
             if self.frame_window_attached(window_index)
                 && self.layout_editor.expanded_window != Some(window.id)

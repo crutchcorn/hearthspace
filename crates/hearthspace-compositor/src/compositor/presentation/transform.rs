@@ -82,6 +82,10 @@ impl App {
         if !self.windows[index].mapped {
             return false;
         }
+        if self.windows[index].kind == super::super::ManagedWindowKind::X11Overlay {
+            return !self.session_locked() && self.x11_overlay_rect(index).overlaps(output);
+        }
+
         if self.is_power_confirmation(index) {
             return self.power_confirmation_active()
                 && self.power_confirmation_surface(index)
