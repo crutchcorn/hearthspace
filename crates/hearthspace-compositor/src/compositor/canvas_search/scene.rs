@@ -15,8 +15,38 @@ pub(super) fn rect(rect: Rectangle<i32, Logical>) -> Rect {
     }
 }
 impl App {
+    fn canvas_search_result_window(&self, id: &str) -> Option<u64> {
+        let session = self.canvas_search.session.as_ref()?;
+        self.windows.iter().enumerate().find_map(|(index, window)| {
+            (window.mapped
+                && self
+                    .canvas_search_result_identity(index)
+                    .is_some_and(|(owner, identity)| {
+                        (owner == 0 || owner == session.id) && identity == id
+                    }))
+            .then_some(window.id)
+        })
+    }
+
     fn canvas_search_sources(&self) -> Vec<ResultItem> {
-        let mut items = Vec::new();
+        let calculation_id = hearthspace_common::canvas_search::calculator::RESULT_ID;
+        let answer = self
+            .canvas_search
+            .session
+            .as_ref()
+            .and_then(|session| session.calculation.clone());
+        let mut items = vec![ResultItem {
+            id: calculation_id.into(),
+            title: answer.unwrap_or_default(),
+            kind: "calculation",
+            window: self.canvas_search_result_window(calculation_id),
+            natural: Rect {
+                width: 240.,
+                height: 72.,
+                ..Rect::default()
+            },
+            search_text: String::new(),
+        }];
         for (index, window) in self.windows.iter().enumerate() {
             if !window.mapped || window.kind != ManagedWindowKind::DesktopItem {
                 continue;
@@ -64,19 +94,7 @@ impl App {
             if entry.id.starts_with("app:") || entry.id.starts_with("file:") {
                 continue;
             }
-            let window = self.windows.iter().enumerate().find_map(|(index, w)| {
-                (w.mapped
-                    && self
-                        .canvas_search_result_identity(index)
-                        .is_some_and(|(session, id)| {
-                            self.canvas_search
-                                .session
-                                .as_ref()
-                                .is_some_and(|s| session == 0 || s.id == session)
-                                && id == entry.id
-                        }))
-                .then_some(w.id)
-            });
+            let window = self.canvas_search_result_window(&entry.id);
             items.push(ResultItem {
                 id: entry.id.clone(),
                 title: entry.title.clone(),
@@ -151,6 +169,9 @@ impl App {
         let results: Vec<_> = sources
             .iter()
             .filter(|item| {
+                if item.kind == "calculation" {
+                    return !item.title.is_empty();
+                }
                 if item.kind == "window" && query.trim().is_empty() {
                     return false;
                 }
@@ -217,7 +238,7 @@ impl App {
                 continue;
             }
             let (from, from_opacity) = previous.map(|p| p.current(now)).unwrap_or(
-                if item.kind == "control" || item.kind == "tool" {
+                if matches!(item.kind, "control" | "tool" | "calculation") {
                     (to, 0.)
                 } else {
                     (item.natural, 1.)

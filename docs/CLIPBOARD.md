@@ -40,6 +40,11 @@ that explicit payload until replaced, and serves it through bounded asynchronous
 transfers so a stalled paste recipient cannot freeze the desktop. The `type`
 command retains its keyboard-event behavior and US ASCII mapping.
 
+Selecting a calculator answer in [canvas search](CANVAS_SEARCH.md) also copies
+compositor-owned text. Only the displayed answer replaces the ordinary clipboard;
+editing or dismissing the query does not change it. The answer remains available
+after the search field closes.
+
 Large X11 transfers use Satellite's INCR implementation. Desktop-file transfers
 use at most 64 KiB per X property chunk and verify both requestor window and
 property when consuming an acknowledgment. The compatibility repairs and

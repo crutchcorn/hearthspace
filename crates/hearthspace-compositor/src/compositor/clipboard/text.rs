@@ -1,4 +1,4 @@
-//! Explicit agent clipboard ownership; transfers never block the compositor loop.
+//! Compositor-owned clipboard text; transfers never block the compositor loop.
 use std::{
     io,
     os::fd::OwnedFd,
@@ -31,6 +31,19 @@ impl App {
             Ok(bytes) => Arc::<[u8]>::from(bytes),
             Err(message) => return ControlReply::Err(message.into()),
         };
+        self.publish_clipboard_text(bytes);
+        ControlReply::Ok
+    }
+
+    pub(in crate::compositor) fn copy_clipboard_text(&mut self, text: &str) -> Result<(), String> {
+        if text.len() > MAX_TEXT_BYTES || text.contains('\0') {
+            return Err("clipboard text must be at most 16384 UTF-8 bytes without NUL".into());
+        }
+        self.publish_clipboard_text(Arc::from(text.as_bytes()));
+        Ok(())
+    }
+
+    fn publish_clipboard_text(&mut self, bytes: Arc<[u8]>) {
         let mime_types = MIME_TYPES.iter().map(|mime| (*mime).to_owned()).collect();
         set_data_device_selection(
             &self.display_handle,
@@ -38,7 +51,6 @@ impl App {
             mime_types,
             SelectionData::Text(bytes),
         );
-        ControlReply::Ok
     }
 }
 

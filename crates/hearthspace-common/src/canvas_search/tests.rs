@@ -193,8 +193,8 @@ fn motion_easing_matches_browser_curve_and_trims_only_invisible_travel() {
 }
 
 #[test]
-fn persistent_previews_are_reserved_for_controls_and_tools() {
-    for id in ["control:sound", "tool:map"] {
+fn persistent_previews_are_reserved_for_controls_tools_and_the_calculator() {
+    for id in ["control:sound", "tool:map", calculator::RESULT_ID] {
         assert_eq!(
             canvas_search_result_from_app_id(&canvas_search_result_app_id(0, id)),
             Some((0, id.into()))

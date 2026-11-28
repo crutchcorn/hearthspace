@@ -1712,6 +1712,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
+name = "fend-core"
+version = "1.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bf10938a7681e32b5b7d82ada720a04837f120e671c1e653309053e92c9e1e2"
+
+[[package]]
 name = "field-offset"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2670,6 +2676,7 @@ dependencies = [
 name = "hearthspace-common"
 version = "0.1.0"
 dependencies = [
+ "fend-core",
  "serde",
  "serde_json",
  "url",

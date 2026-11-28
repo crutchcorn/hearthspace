@@ -5,6 +5,8 @@ use super::shell_panels::{click, connect};
 use super::*;
 use serde_json::{Value, json};
 
+#[path = "canvas_search/calculator.rs"]
+mod calculator;
 #[path = "canvas_search/keyboard.rs"]
 mod keyboard;
 #[path = "canvas_search/lifecycle.rs"]

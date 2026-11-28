@@ -120,7 +120,13 @@ fn control_card_has_a_native_action_and_does_not_open_until_accepted() {
 #[test]
 fn registration_has_only_implemented_controls_and_unique_surface_ids() {
     let ids = window_ids();
-    assert_eq!(ids.len(), ENTRIES.len());
+    assert_eq!(ids.len(), ENTRIES.len() + 1);
+    assert!(ids.contains_key(CALCULATION.id));
+    assert!(
+        !registration()
+            .iter()
+            .any(|entry| entry["id"] == CALCULATION.id)
+    );
     assert!(
         registration()
             .iter()

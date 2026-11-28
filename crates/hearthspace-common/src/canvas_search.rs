@@ -1,4 +1,5 @@
 //! Shared canvas-search presentation geometry; never changes stored canvas positions.
+pub mod calculator;
 mod identity;
 mod layout;
 pub mod motion;

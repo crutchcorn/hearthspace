@@ -15,6 +15,18 @@ Desktop directory; search indexes their names and kinds, never their contents.
 An empty query shows desktop items, controls and tools. Windows join the results
 once the query contains text, ordered from front to back after desktop items.
 
+Type a calculation such as `6 * 7`, `(12 + 3) / 5`, or `sqrt(81)` to get an
+answer card before the other matching results. Select it with Up/Down and Enter,
+or click **Copy answer**, to copy just the displayed answer and close search.
+Focus returns to the previous app, ready to paste. The ordinary clipboard keeps
+the answer after search closes; primary selection is unchanged.
+
+Calculations support parentheses, decimal and scientific notation, powers with
+`^`, and mathematical functions. `×`, `÷`, and `−` work too. Numeric answers use
+up to 15 significant digits. Incomplete expressions, undefined results and
+ordinary search terms produce no calculator card. This version accepts numeric
+answers; natural-language unit conversion is not exposed yet.
+
 Up and Down cycle through results. Enter or a click activates the selected item:
 
 - App shortcuts launch an app; files and folders use their existing default opener.
@@ -68,6 +80,15 @@ temporary transforms, input isolation and window activation. The shell's
 `ui/canvas_search` module owns the native field and live control previews.
 No model or handwriting runtime is included.
 
+The shared `canvas_search::calculator` adapter uses `fend-core` for evaluation,
+leaving room for its unit-aware syntax in a later extension. Results are cached
+per query, limited to 512 input bytes and 32 parenthesis levels, and use a
+cooperative 50 ms evaluation deadline. The compositor derives the result from
+the current query and owns the copied text. Shell activations include their
+query so an outdated result cannot copy a replacement answer. Changing the query
+also cancels any held click on the calculator card without releasing its input
+ownership to another target.
+
 Control preview surfaces stay allocated across searches to avoid repeated
 native-window creation on the interaction path. The compositor hides them
 outside the active search; inactive and unmatched card contents are stashed
@@ -90,6 +111,9 @@ versus displayed object geometry. Stale session commands and late surfaces are
 rejected. Locking or losing the VT clears search and invalidates deferred actions.
 Control activation uses a short-lived, one-use compositor token before the shell
 opens a dropdown; desktop file/app activation retains its existing token path.
+Calculator results use `id: "calculation:answer"` and `kind: "calculation"`;
+their title is the exact text to copy. Automation can include `query` in an
+activation payload to reject an answer from an outdated query.
 
 Geometry tests cover dense result grids, compact and offset outputs, and motion
 clipping. Native widget tests cover editing, selection, empty states and control

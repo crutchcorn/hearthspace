@@ -21,6 +21,13 @@ mod catalog;
 mod details;
 use catalog::{ENTRIES, Entry};
 
+const CALCULATION: Entry = Entry {
+    id: hearthspace_common::canvas_search::calculator::RESULT_ID,
+    title: "Calculator",
+    keywords: "",
+    icon: Icon::Plus,
+};
+
 pub(super) fn registration() -> Vec<Value> {
     ENTRIES.iter().map(|entry| json!({"id":entry.id,"title":entry.title,
         "search_text":format!("{} {} {}", entry.title, entry.keywords, if entry.id.starts_with("tool:") {"tool"} else {"widget system control"})})).collect()
@@ -29,6 +36,7 @@ pub(super) fn registration() -> Vec<Value> {
 pub(super) fn window_ids() -> BTreeMap<String, WindowId> {
     ENTRIES
         .iter()
+        .chain(std::iter::once(&CALCULATION))
         .map(|entry| (entry.id.to_owned(), WindowId::next()))
         .collect()
 }
@@ -37,6 +45,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
     let search = &state.canvas_search;
     ENTRIES
         .iter()
+        .chain(std::iter::once(&CALCULATION))
         .map(|entry| {
             crate::ui::popup::window(
                 search.result_windows[entry.id],
@@ -53,14 +62,33 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
 fn view(state: &ShellState, entry: &'static Entry) -> impl WidgetView<ShellState> + use<> {
     let selected = state.canvas_search.snapshot.selected_id.as_deref() == Some(entry.id);
     let available = state.canvas_search.snapshot.active
+        && (entry.id != CALCULATION.id
+            || state.canvas_search.query == state.canvas_search.snapshot.query)
         && state
             .canvas_search
             .snapshot
             .results
             .iter()
             .any(|result| result.id == entry.id);
-    let (glyph, detail) = detail(state, entry);
+    let (title, glyph, detail) = if entry.id == CALCULATION.id {
+        let answer = state
+            .canvas_search
+            .snapshot
+            .results
+            .iter()
+            .find(|result| result.id == CALCULATION.id)
+            .map_or("", |result| result.title.as_str());
+        (
+            format!("= {answer}"),
+            Icon::Plus,
+            Some("Copy answer".into()),
+        )
+    } else {
+        let (glyph, detail) = detail(state, entry);
+        (entry.title.to_owned(), glyph, detail)
+    };
     let palette = state.appearance.palette;
+    let displayed_query = state.canvas_search.snapshot.query.clone();
     let card = super::material::card(
         button(
             flex_row((
@@ -77,7 +105,7 @@ fn view(state: &ShellState, entry: &'static Entry) -> impl WidgetView<ShellState
                 )
                 .width(30.0.px()),
                 flex_col((
-                    label(entry.title)
+                    label(title)
                         .text_size(14.0)
                         .weight(FontWeight::SEMI_BOLD)
                         .color(palette.text)
@@ -89,7 +117,12 @@ fn view(state: &ShellState, entry: &'static Entry) -> impl WidgetView<ShellState
                 .flex(1.0),
             ))
             .gap(14.0.px()),
-            move |state: &mut ShellState| super::activate(state, Some(entry.id)),
+            move |state: &mut ShellState| {
+                if entry.id == CALCULATION.id && state.canvas_search.query != displayed_query {
+                    return;
+                }
+                super::activate(state, Some(entry.id));
+            },
         )
         .disabled(!available)
         .padding(16.0.px())
@@ -219,3 +252,7 @@ fn tool(id: &str) -> Option<CanvasTool> {
 #[cfg(test)]
 #[path = "controls_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "calculator_tests.rs"]
+mod calculator_tests;
