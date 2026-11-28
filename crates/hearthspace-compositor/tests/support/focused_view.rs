@@ -79,7 +79,7 @@ fn focused_view_keyboard_entry_clears_window_and_desktop_selections() {
     let desktop = query(&compositor, "desktop-status");
     assert_eq!(desktop["items"][0]["selected"], false);
     assert_eq!(desktop["items"][0]["keyboard_focus"], false);
-    assert_eq!(desktop["select_mode"], false);
+    assert_eq!(desktop["select_mode"], true);
     // The keyboard toggle still exits to bounded maximization; only the
     // titlebar's maximize/restore button exits directly to floating geometry.
     keys(&compositor, &[125, 42, 33]);

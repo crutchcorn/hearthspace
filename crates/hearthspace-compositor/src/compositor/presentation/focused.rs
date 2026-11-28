@@ -214,6 +214,7 @@ impl App {
         self.viewport_animation = None;
         self.clear_window_group();
         self.clear_desktop_selection();
+        self.restore_default_canvas_tool();
         self.reset_focused_shell_peek();
         true
     }

@@ -182,6 +182,10 @@ actions return an error until the popup is dismissed.
 
 ## Pan canvas with a mouse
 
+**Select desktop items** is active at login. If focused presentation or input
+recovery cancels a canvas tool, selection becomes the fallback for the next
+desktop drag. Canceled gestures remain canceled until a fresh press.
+
 Hold **❖** and left-drag empty canvas to pan temporarily. Press the modifier
 before the mouse button; your selected canvas tool stays unchanged. The drag
 continues if you release ❖ first and ends when you release the mouse button.
