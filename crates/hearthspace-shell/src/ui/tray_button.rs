@@ -32,25 +32,30 @@ pub(super) struct ButtonView {
     pub appearance: Appearance,
 }
 
-pub(super) fn icon(output: &str, item: &TrayItem) -> ButtonView {
+pub(super) fn icon(
+    output: &str,
+    item: &TrayItem,
+    palette: hearthspace_ui_components::Palette,
+) -> ButtonView {
     ButtonView {
         output: output.into(),
         target: Target::Item(item.key.clone()),
         appearance: Appearance {
             name: item.title.clone(),
             description: item.tooltip.clone(),
-            image: image(item),
+            image: image(item, palette.for_glass().text),
             icon: true,
             attention: item.status == TrayStatus::NeedsAttention,
             ..Default::default()
         },
     }
 }
-fn image(item: &TrayItem) -> Option<ImageBrush> {
-    let pixmap = item.icon.pixmap.as_ref()?;
+fn image(item: &TrayItem, ink: hearthspace_ui_components::Color) -> Option<ImageBrush> {
+    let pixmap =
+        super::tray_image::themed(item.icon.pixmap.as_ref()?, item.icon.name.as_deref(), ink);
     Some(
         ImageData {
-            data: pixmap.rgba.clone().into(),
+            data: pixmap.rgba.into(),
             format: ImageFormat::Rgba8,
             alpha_type: ImageAlphaType::Alpha,
             width: pixmap.width,

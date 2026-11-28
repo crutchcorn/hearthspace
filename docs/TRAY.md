@@ -9,7 +9,9 @@ Wayland shell surfaces.
 
 ## Using tray apps
 
-- Click an icon to activate its application. Menu-only indicators open their menu.
+- Click an icon to activate its application. Menu-only indicators open their menu. Older menu-only
+  indicators, including Steam, may omit the activation method; both mouse
+  buttons then open the exported menu, even without a main application window.
 - Right-click to open an application's exported menu. Applications without an
   exported menu receive the protocol's context-menu request.
 - Middle-click is delivered to applications that support it. Scrolling moves an
@@ -25,7 +27,7 @@ visible. App exit removes its icon and closes an open menu belonging to it.
 Restarting an app registers a fresh item without leaving a duplicate behind.
 The bar shows the app icons directly, without an extra tray button or list.
 By default, application tray icons remain in the top system group even when the same app is
-running or pinned in the bottom dock. Each tray icon retains its original artwork,
+running or pinned in the bottom dock. Colored tray icons retain their original artwork,
 status, and menu; the dock icon launches the app or focuses its windows.
 
 All active icons remain in the strip. Detached strips stay within the output and
@@ -34,6 +36,14 @@ use the frame group's scrolling. Named PNG/SVG icons, private app icon themes,
 and supplied pixel images are supported. Standard status names fall back to their symbolic
 theme variants when needed. Attention icons are supported; separate overlay
 icons and animated icon movies are not currently composed.
+
+Symbolic and explicitly monochrome tray icons use the shell foreground color,
+so they stay readable in both light and dark mode, including live theme changes.
+For pixel-only icons without a symbolic name, a transparent, single neutral ink
+is treated as monochrome. Colored logos, colored status badges, opaque tiles,
+and unmarked multitone artwork retain their colors; Hearthspace does not invert
+all tray artwork. These adaptations apply only to the tray, not dock or launcher
+icons.
 
 The supported interface is StatusNotifierItem (also used by AppIndicator and
 Ayatana libraries). The legacy X11 system-tray window-embedding protocol is not

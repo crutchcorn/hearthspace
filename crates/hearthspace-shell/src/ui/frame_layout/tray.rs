@@ -69,7 +69,14 @@ pub(super) fn content(
         } else {
             desired.0 > bounded.0
         };
-    let strip = crate::ui::tray_view::frame_strip(output, &state.tray, vertical, chain, overflow);
+    let strip = crate::ui::tray_view::frame_strip(
+        output,
+        &state.tray,
+        vertical,
+        chain,
+        overflow,
+        state.appearance.palette,
+    );
     if grouped {
         strip.boxed()
     } else {

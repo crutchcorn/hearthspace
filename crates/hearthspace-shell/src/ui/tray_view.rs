@@ -20,11 +20,12 @@ pub(super) fn strip(
     output: &ShellOutputInstance,
     state: &TrayState,
     reserved_width: f64,
+    palette: components::Palette,
 ) -> Option<impl WidgetView<ShellState> + use<>> {
     tray_state::visible(&state.snapshot).next()?;
     let icons = tray_state::visible(&state.snapshot)
         .take(tray_state::capacity(output.tray.bar_width - reserved_width))
-        .map(|item| tray_button::icon(output.key(), item))
+        .map(|item| tray_button::icon(output.key(), item, palette))
         .collect::<Vec<_>>();
     Some(flex_row(icons).gap(4.0.px()))
 }
@@ -35,11 +36,12 @@ pub(super) fn frame_strip(
     vertical: bool,
     chain: &super::frame_layout::focus::Chain,
     scroll_in_parent: bool,
+    palette: components::Palette,
 ) -> impl WidgetView<ShellState> + use<> {
     let icons = tray_state::visible(&state.snapshot)
         .enumerate()
         .map(|(index, item)| {
-            let mut icon = tray_button::icon(output.key(), item);
+            let mut icon = tray_button::icon(output.key(), item, palette);
             icon.appearance.scroll_in_parent = scroll_in_parent;
             super::frame_layout::focus::item(icon, chain, index).boxed()
         })

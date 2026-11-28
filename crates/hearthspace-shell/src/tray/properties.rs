@@ -34,7 +34,23 @@ pub(super) async fn read(connection: &Connection, key: ItemKey) -> Result<Item, 
         .get_all(InterfaceName::from_static_str_unchecked(ITEM_INTERFACE))
         .await
         .map_err(error)?;
-    from_properties(key, &properties)
+    let mut item = from_properties(key.clone(), &properties)?;
+    if item.menu_path.is_some() && !properties.contains_key("ItemIsMenu") {
+        // Older AppIndicator/Ayatana peers export only a DBusMenu, without
+        // Activate or ItemIsMenu (Steam is one). Honor explicit ItemIsMenu=false.
+        let introspection = zbus::fdo::IntrospectableProxy::builder(connection)
+            .destination(key.owner.clone())
+            .map_err(error)?
+            .path(key.path.clone())
+            .map_err(error)?
+            .build()
+            .await
+            .map_err(error)?;
+        if let Ok(xml) = introspection.introspect().await {
+            item.view.item_is_menu = menu_only_interface(&xml);
+        }
+    }
+    Ok(item)
 }
 
 pub(super) fn from_properties(key: ItemKey, properties: &Properties) -> Result<Item, String> {
@@ -148,4 +164,14 @@ pub(super) fn limit(text: &str) -> String {
 }
 pub(super) fn error(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+fn menu_only_interface(xml: &str) -> bool {
+    if xml.len() > 128 * 1024 {
+        return false;
+    }
+    gio::DBusNodeInfo::for_xml(xml)
+        .ok()
+        .and_then(|node| node.lookup_interface(ITEM_INTERFACE))
+        .is_some_and(|interface| interface.lookup_method("Activate").is_none())
 }

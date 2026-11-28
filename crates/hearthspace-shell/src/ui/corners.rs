@@ -193,7 +193,7 @@ pub(super) fn system_view(
         "System tray",
         flex_row((
             (!compact).then(|| focus(super::quick_panel::clock_button(state, output))),
-            super::tray_view::strip(output, &state.tray, reserved),
+            super::tray_view::strip(output, &state.tray, reserved, state.appearance.palette),
             (!compact).then(|| {
                 focus(super::quick_panel::button_view(
                     output,

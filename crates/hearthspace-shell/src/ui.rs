@@ -110,3 +110,5 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tray_tests;
+
+mod tray_image;

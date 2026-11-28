@@ -96,7 +96,14 @@ fn view(
             false,
             &Default::default(),
         ),
-        tray_view::frame_strip(output, &state.tray, false, &Default::default(), false),
+        tray_view::frame_strip(
+            output,
+            &state.tray,
+            false,
+            &Default::default(),
+            false,
+            state.appearance.palette,
+        ),
         output
             .tray
             .open
