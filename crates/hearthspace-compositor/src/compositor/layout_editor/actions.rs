@@ -120,9 +120,6 @@ impl App {
         if !self.layout_editing() {
             return Err("layout editor is not open".into());
         }
-        // A drag snapshot owns only its tentative edit. Retire it before an
-        // acknowledged command can remove an instance or advance its identity.
-        self.cancel_layout_drag();
         if matches!(command.action, Action::Done) {
             self.finish_layout_editor();
             return Ok(());
@@ -140,14 +137,24 @@ impl App {
                 .ok_or("missing layout target")?,
         };
         self.check_layout_target(&target)?;
+        if let Action::Place { placement, .. } = command.action
+            && !placement.valid()
+        {
+            return Err("invalid placement".into());
+        }
+        if matches!(command.action, Action::ClockDateFormat { .. })
+            && self.widget_kind(&target.output, &target.target.id) != Some("clock")
+        {
+            return Err("widget is not a clock".into());
+        }
+        // Reject stale targets before touching another drag. Once admitted, a
+        // command must outlive the drag snapshot that could otherwise undo it.
+        self.cancel_layout_drag();
         match command.action {
             Action::Select { .. } => {
                 self.layout_editor.session.as_mut().unwrap().selected = Some(target)
             }
             Action::Place { placement, .. } => {
-                if !placement.valid() {
-                    return Err("invalid placement".into());
-                }
                 if target.target.kind == TargetKind::Group
                     && matches!(
                         placement,

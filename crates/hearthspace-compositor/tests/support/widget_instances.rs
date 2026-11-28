@@ -218,7 +218,39 @@ fn removing_a_widget_during_a_drag_cannot_be_undone_by_the_later_release_or_edit
         "canvas-search-open {\"x\":160,\"y\":220,\"filter\":\"widgets\"}",
     );
     activate(&compositor, "widget:launcher");
-    assert_ne!(copies(&layout(&compositor), "launcher")[0], id);
+    let replacement = copies(&layout(&compositor), "launcher")[0].clone();
+    assert_ne!(replacement, id);
+    client.add(
+        frame_widget_app_id(Some(&output), &replacement),
+        (54, 54),
+        (0, 0),
+        [0, 0, 255, 255],
+    );
+    action(&compositor, "layout-tool");
+    action(&compositor, "pointer-motion-abs 180 240");
+    action(&compositor, "pointer-button-down 272");
+    action(&compositor, "pointer-motion-abs 360 340");
+    let before = layout(&compositor);
+    let stale = format!(
+        "layout-command {}",
+        json!({"session":before["session"],"output":output,"action":"remove","target":{"kind":"widget","id":id}})
+    );
+    assert!(compositor.send_text_command(&stale).starts_with("err "));
+    assert_eq!(
+        layout(&compositor)["outputs"],
+        before["outputs"],
+        "a rejected stale removal must leave the replacement's drag intact"
+    );
+    action(&compositor, "pointer-motion-abs 400 360");
+    assert_ne!(layout(&compositor)["outputs"], before["outputs"]);
+    action(&compositor, "pointer-button-up 272");
+    action(
+        &compositor,
+        format!(
+            "layout-command {}",
+            json!({"session":before["session"],"output":output,"action":"done"})
+        ),
+    );
     action(&compositor, "quit");
     wait_for_exit(&mut compositor.child);
 }
