@@ -16,6 +16,12 @@ does not put a shortcut on the desk. Apps remain available through the launcher,
 search, and favorites. Actual files and shortcuts placed in the Desktop folder
 remain ordinary desktop items.
 
+Fresh layouts retain the starter frame arrangement. Those controls are widget
+instances too: moving them to the canvas preserves their function, and removing
+a canvas copy does not cause startup to recreate it. Adding another output may
+initialize that output's starter arrangement; reconnecting a known output uses
+its saved arrangement.
+
 ## Kinds and instances
 
 A widget kind describes a capability: Notifications, Clock, Wi-Fi, Sound,
@@ -64,8 +70,8 @@ shell owns accessible widget controls and their menus. Existing desktop services
 remain the owners of app discovery, notifications, and device state. Multiple
 widgets observe those services without creating competing service owners.
 
-Existing saved layouts require an explicit migration: preserve user placements
-and groups, distinguish them from implicit starter controls, and do not recreate
+Existing saved layouts require an explicit migration: preserve placements
+and groups while assigning instance identities, and do not recreate
 removed widgets at startup or when an output reconnects. Installed-app canvas
 shortcuts may stop being generated without removing applications, favorites,
 Desktop files, or their saved positions.
