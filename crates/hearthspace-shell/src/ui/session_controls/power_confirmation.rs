@@ -47,11 +47,13 @@ impl Confirmation {
         }
     }
 
+    pub(super) fn available(self, state: &ShellState) -> bool {
+        self.action()
+            .is_none_or(|action| state.power.action_available(action))
+    }
+
     pub(super) fn enabled(self, state: &ShellState) -> bool {
-        self.action().map_or_else(
-            || !state.power.busy(),
-            |action| state.power.can_action(action),
-        )
+        self.available(state) && !state.power.busy()
     }
 
     pub(super) fn pending(self, state: &ShellState) -> bool {

@@ -9,7 +9,7 @@ struct Metrics {
     fonts: FontContext,
     layouts: LayoutContext<BrushIndex>,
     layout: Layout<BrushIndex>,
-    widths: BTreeMap<(String, u32), f64>,
+    widths: BTreeMap<(String, u32, u32), f64>,
 }
 impl Default for Metrics {
     fn default() -> Self {
@@ -56,8 +56,12 @@ fn font_context() -> FontContext {
 thread_local! { static METRICS: RefCell<Metrics> = RefCell::new(Metrics::default()); }
 
 pub(super) fn width(text: &str, size: f32) -> f64 {
+    weighted_width(text, size, 500.0)
+}
+
+fn weighted_width(text: &str, size: f32, weight: f32) -> f64 {
     METRICS.with_borrow_mut(|metrics| {
-        let key = (text.to_owned(), size.to_bits());
+        let key = (text.to_owned(), size.to_bits(), weight.to_bits());
         if let Some(width) = metrics.widths.get(&key) {
             return *width;
         }
@@ -72,7 +76,7 @@ pub(super) fn width(text: &str, size: f32) -> f64 {
             "Liberation Sans".into(),
         )));
         builder.push_default(StyleProperty::FontSize(size));
-        builder.push_default(StyleProperty::FontWeight(FontWeight::new(500.0)));
+        builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
         builder.build_into(layout, text);
         layout.break_all_lines(None);
         let width = f64::from(layout.width()).ceil();
@@ -83,4 +87,32 @@ pub(super) fn width(text: &str, size: f32) -> f64 {
         widths.insert(key, width);
         width
     })
+}
+
+/// Fit a single shaped line, preserving complete UTF-8 characters.
+pub(super) fn ellipsize(text: &str, max_width: f64, size: f32, weight: f32) -> String {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if weighted_width(&text, size, weight) <= max_width {
+        return text;
+    }
+    let ends: Vec<_> = text
+        .char_indices()
+        .map(|(index, _)| index)
+        .chain([text.len()])
+        .collect();
+    let (mut low, mut high) = (0, ends.len());
+    while low < high {
+        let middle = (low + high) / 2;
+        let candidate = format!("{}…", text[..ends[middle]].trim_end());
+        if weighted_width(&candidate, size, weight) <= max_width {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    if low == 0 {
+        String::new()
+    } else {
+        format!("{}…", text[..ends[low - 1]].trim_end())
+    }
 }

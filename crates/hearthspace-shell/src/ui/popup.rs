@@ -39,7 +39,9 @@ impl PopupKind {
         output.popup_measurements[self.index()] = PopupMeasurement::default();
     }
     fn padding(self) -> f64 {
-        if matches!(self, Self::Search | Self::Notifications) {
+        if matches!(self, Self::Power) {
+            6.0
+        } else if matches!(self, Self::Search | Self::Notifications) {
             0.0
         } else {
             PADDING
@@ -156,7 +158,7 @@ fn observed<V: WidgetView<ShellState>>(
     )
 }
 
-fn frame<V: WidgetView<ShellState>>(
+pub(super) fn frame<V: WidgetView<ShellState>>(
     kind: PopupKind,
     content: V,
 ) -> impl WidgetView<ShellState> + use<V> {

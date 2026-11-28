@@ -22,6 +22,8 @@ mod presentation;
 mod size_hints;
 #[path = "x11_interactive/touch.rs"]
 mod touch;
+#[path = "x11_interactive/unspecified_button.rs"]
+mod unspecified_button;
 use assertions::*;
 use client::{Client, GREEN, RED};
 

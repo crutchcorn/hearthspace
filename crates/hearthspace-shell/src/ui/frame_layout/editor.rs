@@ -104,17 +104,23 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         matches!(target.kind, TargetKind::Widget | TargetKind::Group)
             || layout.placement(target).is_frame()
     });
+    // Reserve panel padding, the title inset, and each 44px action plus its gap.
+    let title_width = (size(state).0 - 20.0 - 48.0 * if removable { 2.0 } else { 1.0 }).max(0.0);
+    let displayed = super::text_metrics::ellipsize(&title, title_width, 13.0, 600.0);
     let header = flex_row((
-        label(title)
-            .font("Liberation Sans")
-            .text_size(13.0)
-            .weight(FontWeight::SEMI_BOLD)
-            .line_break_mode(LineBreaking::Clip)
-            .padding(Padding {
-                left: 10.0.px(),
-                ..Padding::ZERO
-            })
-            .flex(1.0),
+        crate::ui::popup_group::group(
+            title,
+            label(displayed)
+                .font("Liberation Sans")
+                .text_size(13.0)
+                .weight(FontWeight::SEMI_BOLD)
+                .line_break_mode(LineBreaking::Clip)
+                .padding(Padding {
+                    left: 10.0.px(),
+                    ..Padding::ZERO
+                }),
+        )
+        .flex(1.0),
         removable.then(|| {
             action(
                 Icon::Trash2,
@@ -140,6 +146,9 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     ))
     .gap(4.0.px())
     .height(44.0.px());
+    let header = sized_box(header)
+        .fixed_width((size(state).0 - 10.0).px())
+        .flex(CrossAxisAlignment::Start);
     let options = (expandable || grouped).then(|| {
         let details = expandable.then(|| {
             let expanded = selected.is_some_and(|(target, layout)| layout.is_expanded(&target.id));

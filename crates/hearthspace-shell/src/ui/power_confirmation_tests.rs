@@ -189,16 +189,21 @@ fn confirmation_focus_recovery_leaves_valid_sibling_focus_alone() {
 }
 
 #[test]
-fn unavailable_reboot_and_power_off_stay_visible_and_cannot_arm_confirmation() {
+fn unavailable_reboot_and_power_off_are_absent_and_cannot_arm_confirmation() {
     let (mut state, mut commands) = state();
     state.power.status.reboot_available = false;
     state.power.status.power_off_available = false;
     let mut ui = Ui::new(state, view, (224, 280));
-    for name in ["Reboot", "Turn off"] {
-        let action = ui.button(name);
-        assert!(ui.harness.access_node(action).unwrap().is_disabled());
-        ui.activate(action);
-        ui.dispatch(&view);
+    for (name, action) in [
+        ("Reboot", Confirmation::Reboot),
+        ("Turn off", Confirmation::PowerOff),
+    ] {
+        assert!(!ids(&ui.harness).into_iter().any(|id| {
+            ui.harness
+                .access_node(id)
+                .is_some_and(|node| node.label().as_deref() == Some(name))
+        }));
+        power_confirmation::open(&mut ui.state, "eDP-1", action);
         assert!(ui.state.outputs[0].power_confirmation.is_none());
         assert!(commands.try_recv().is_err());
     }

@@ -1,7 +1,7 @@
 //! Reference-sized power rows and confirmation, backed by real session actions.
 use super::{Confirmation, power_confirmation, power_dialog, send_command};
 use crate::ui::{
-    canvas_search::material,
+    popup::{self, PopupKind},
     popup_group,
     power_task::Action,
     search_focus::{FocusTarget, Record, focus_on_activation},
@@ -144,16 +144,6 @@ fn menu(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<She
     let targets = &output.power_ui.rows;
     let lock_key = output.key().to_owned();
     let suspend_key = lock_key.clone();
-    let unavailable = (!power.status.available && !power.busy()).then(|| {
-        feedback(
-            power
-                .status
-                .error
-                .clone()
-                .unwrap_or_else(|| "Suspend is unavailable in this session.".into()),
-            palette,
-        )
-    });
     let mut navigation = vec![targets[0].clone()];
     if power.can_suspend() {
         navigation.push(targets[1].clone());
@@ -168,40 +158,31 @@ fn menu(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<She
             if enabled {
                 navigation.push(target.clone());
             }
-            row(
-                match action {
-                    Confirmation::LogOff => Icon::LogOut,
-                    Confirmation::Reboot => Icon::RotateCcw,
-                    Confirmation::PowerOff => Icon::Power,
-                },
-                action.label(),
-                enabled,
-                if enabled {
-                    palette.text
-                } else {
-                    palette.text_muted
-                },
-                target,
-                move |state| power_confirmation::open(state, &key, action),
-            )
+            action.available(state).then(|| {
+                row(
+                    match action {
+                        Confirmation::LogOff => Icon::LogOut,
+                        Confirmation::Reboot => Icon::RotateCcw,
+                        Confirmation::PowerOff => Icon::Power,
+                    },
+                    action.label(),
+                    enabled,
+                    if enabled {
+                        palette.text
+                    } else {
+                        palette.text_muted
+                    },
+                    target,
+                    move |state| power_confirmation::open(state, &key, action),
+                )
+            })
         })
         .collect();
-    let capability_errors: Vec<_> = [
-        (!power.status.reboot_available).then_some(&power.status.reboot_error),
-        (!power.status.power_off_available).then_some(&power.status.power_off_error),
-    ]
-    .into_iter()
-    .flatten()
-    .filter_map(|error| error.as_ref())
-    .map(|error| feedback(error.clone(), palette))
-    .collect();
     let rows = flex_col((
         output
             .launch_error
             .clone()
             .map(|error| feedback(error, palette)),
-        unavailable,
-        capability_errors,
         row(
             Icon::Lock,
             "Lock screen",
@@ -213,22 +194,25 @@ fn menu(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<She
                 state.finish_launch(&lock_key, result);
             },
         ),
-        row(
-            Icon::Moon,
-            if power.pending_action == Some(Action::Suspend) {
-                "Suspending…"
-            } else {
-                "Suspend"
-            },
-            power.can_suspend(),
-            if power.can_suspend() {
-                palette.text
-            } else {
-                palette.text_muted
-            },
-            targets[1].clone(),
-            move |state| crate::ui::power_task::suspend(state, &suspend_key),
-        ),
+        (power.action_available(Action::Suspend) || power.pending_action == Some(Action::Suspend))
+            .then(|| {
+                row(
+                    Icon::Moon,
+                    if power.pending_action == Some(Action::Suspend) {
+                        "Suspending…"
+                    } else {
+                        "Suspend"
+                    },
+                    power.can_suspend(),
+                    if power.can_suspend() {
+                        palette.text
+                    } else {
+                        palette.text_muted
+                    },
+                    targets[1].clone(),
+                    move |state| crate::ui::power_task::suspend(state, &suspend_key),
+                )
+            }),
         sized_box(
             sized_box(flex_col(()))
                 .height(1.0.px())
@@ -253,7 +237,7 @@ fn menu(state: &ShellState, output: &ShellOutputInstance) -> impl WidgetView<She
     let content = components::touch_portal(rows)
         .constrain_horizontal(true)
         .must_fill(false);
-    material::panel(sized_box(content).padding(7.0.px()), false, palette)
+    popup::frame(PopupKind::Power, content)
 }
 
 pub(in crate::ui) fn panel(

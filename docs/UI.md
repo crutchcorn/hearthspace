@@ -114,6 +114,10 @@ tiles, and 20 for panels. Inset shapes should follow the parent curve after
 accounting for padding and border width. Materials should not wobble, refract, or
 stretch decoratively; motion should explain a change of place or state.
 
+Power and the other status dropdowns share the shell's rounded popup frame,
+border, and surface tint. Power keeps a compact inset around its action rows;
+its destructive confirmations remain separate dialogs.
+
 Settings uses `settings_button` and `settings_surface` to decorate native controls.
 Apply sizing and padding to the native button before wrapping it, and dynamic
 `.disabled(...)` to the returned material view so paint and input agree. Shell

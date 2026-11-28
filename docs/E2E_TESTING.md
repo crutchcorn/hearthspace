@@ -86,8 +86,10 @@ clipboard smoke command.
 
 ## CI Coverage and Evidence
 
-CI runs the ordinary workspace and Python tests separately from the full E2E
-configuration. The E2E job enables `udev,e2e,test-apps`, runs Rust tests one at a
+Pushes and pull requests run the ordinary workspace and Python checks. The
+**E2E Tests** workflow runs only through manual `workflow_dispatch` events;
+start it from the repository's Actions tab when full E2E validation is needed.
+The E2E job enables `udev,e2e,test-apps`, runs Rust tests one at a
 time, and sets `HEARTHSPACE_E2E=1`, `HEARTHSPACE_REQUIRE_ATSPI=1`,
 `HEARTHSPACE_REQUIRE_TRAY_LIBRARY=1`, `LIBGL_ALWAYS_SOFTWARE=1`,
 `GSK_RENDERER=cairo`, and `VK_DRIVER_FILES` pointing to Mesa's Lavapipe ICD for

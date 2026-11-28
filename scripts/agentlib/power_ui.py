@@ -153,20 +153,18 @@ def run(smoke):
     peer.power.unavailable(reason)
     checks.click(smoke, "Power")
     checks.opened(smoke, "power")
-    smoke.until("unsupported suspend explanation", lambda: visible(smoke, reason))
-    disabled = a11y(
-        smoke, "find", selector("Suspend", role="button") + "[not(@focusable='true')]"
-    )["elements"]
-    if not disabled:
-        raise ControlError("unsupported Suspend action is still focusable")
-    checks.click(smoke, "Suspend", "power")
-    checks.opened(smoke, "power")
+    smoke.until(
+        "unsupported suspend omitted",
+        lambda: not checks.elements(smoke, "Suspend"),
+    )
+    if visible(smoke, reason):
+        raise ControlError("unsupported Suspend explanation must not clutter the menu")
     smoke.capture("suspend-unavailable")
     with Input(smoke.control) as inputs:
         inputs.chord("esc")
     checks.closed(smoke)
     if peer.power.suspend_events() != events:
-        raise ControlError("disabled Suspend action reached the coordinator")
+        raise ControlError("hidden Suspend action reached the coordinator")
     smoke.capture("power-controls-complete")
     smoke.record(
         "power-controls-verified",
@@ -175,6 +173,6 @@ def run(smoke):
         notifications_deduplicated=True,
         absent_battery_hidden=True,
         suspend_without_battery=True,
-        unsupported_suspend_disabled=True,
+        unsupported_suspend_hidden=True,
         suspend_requests=events,
     )

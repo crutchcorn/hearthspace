@@ -23,6 +23,8 @@ mod guide_layers;
 mod identity_cache;
 #[path = "frame_layout/input.rs"]
 mod input;
+#[path = "frame_layout/materials.rs"]
+mod materials;
 #[path = "frame_layout/member_hit.rs"]
 mod member_hit;
 #[path = "frame_layout/pending_click.rs"]

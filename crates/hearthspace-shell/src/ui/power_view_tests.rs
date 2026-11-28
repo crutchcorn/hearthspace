@@ -28,6 +28,77 @@ fn state() -> ShellState {
 }
 
 #[test]
+fn measured_menu_keeps_every_action_visible_after_output_scaling() {
+    use masonry::core::WindowEvent;
+    for scale in [1.0, 1.25, 2.0] {
+        let mut state = state();
+        let _commands = crate::ui::power_task::test_channel(&mut state);
+        state.power.status.available = true;
+        state.power.status.reboot_available = true;
+        state.power.status.power_off_available = true;
+        let mut ui = Ui::new(state, view, (224, 245));
+        ui.harness.process_window_event(WindowEvent::Rescale(scale));
+        let size = power_size(&ui.state, &ui.state.outputs[0]);
+        ui.harness.process_window_event(WindowEvent::Resize(
+            (
+                (size.width * scale).ceil() as u32,
+                (size.height * scale).ceil() as u32,
+            )
+                .into(),
+        ));
+        ui.dispatch(&view);
+        for name in ["Lock screen", "Suspend", "Log off", "Reboot", "Turn off"] {
+            let bounds = ui
+                .harness
+                .access_node(ui.button(name))
+                .unwrap()
+                .bounding_box()
+                .unwrap();
+            assert!(
+                bounds.x0 >= 0.0
+                    && bounds.y0 >= 0.0
+                    && bounds.x1 <= size.width * scale
+                    && bounds.y1 <= size.height * scale,
+                "{name} must fit the measured menu at {scale}x: {bounds:?} vs {size:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn capability_removal_keeps_other_action_identity_and_shrinks_the_menu() {
+    let mut state = state();
+    let _commands = crate::ui::power_task::test_channel(&mut state);
+    state.power.status.available = true;
+    state.power.status.reboot_available = true;
+    state.power.status.power_off_available = true;
+    let mut ui = Ui::new(state, view, (224, 245));
+    let turn_off = ui.button("Turn off");
+    ui.harness.focus_on(Some(turn_off));
+    let full_height = power_size(&ui.state, &ui.state.outputs[0]).height;
+    ui.state.power.status.available = false;
+    ui.state.power.status.reboot_available = false;
+    ui.state.power.status.error = Some("Suspend is not permitted for this session".into());
+    ui.state.power.status.reboot_error = Some("Reboot is unavailable".into());
+    ui.rebuild(&view);
+    ui.dispatch(&view);
+    assert_eq!(ui.button("Turn off"), turn_off);
+    assert_eq!(ui.harness.focused_widget_id(), Some(turn_off));
+    assert_eq!(
+        power_size(&ui.state, &ui.state.outputs[0]).height,
+        full_height - 88.0
+    );
+    assert!(
+        !ids(&ui.harness)
+            .into_iter()
+            .any(|id| ui.harness.access_node(id).is_some_and(|node| matches!(
+                node.value().as_deref(),
+                Some("Suspend is not permitted for this session" | "Reboot is unavailable")
+            )))
+    );
+}
+
+#[test]
 fn compact_rows_keep_touch_targets_and_arrows_skip_unavailable_suspend() {
     let mut state = state();
     state.power.status.available = true;
@@ -35,7 +106,7 @@ fn compact_rows_keep_touch_targets_and_arrows_skip_unavailable_suspend() {
     let lock = ui.button("Lock screen");
     let logout = ui.button("Log off");
     assert_eq!(ui.harness.focused_widget_id(), Some(lock));
-    for name in ["Lock screen", "Suspend", "Log off", "Reboot", "Turn off"] {
+    for name in ["Lock screen", "Log off"] {
         let bounds = ui
             .harness
             .access_node(ui.button(name))
@@ -45,12 +116,11 @@ fn compact_rows_keep_touch_targets_and_arrows_skip_unavailable_suspend() {
         assert_eq!(bounds.height(), 44.0, "{name}: {bounds:?}");
         assert!(bounds.x0 >= 7.0 && bounds.x1 <= 217.0, "{name}: {bounds:?}");
     }
-    assert!(
+    assert!(!ids(&ui.harness).iter().any(|id| {
         ui.harness
-            .access_node(ui.button("Suspend"))
-            .unwrap()
-            .is_disabled()
-    );
+            .access_node(*id)
+            .is_some_and(|node| node.label().as_deref() == Some("Suspend"))
+    }));
     key(&mut ui, NamedKey::ArrowDown, &view);
     assert_eq!(ui.harness.focused_widget_id(), Some(logout));
     key(&mut ui, NamedKey::ArrowDown, &view);
@@ -92,7 +162,7 @@ fn capability_update_recovers_menu_focus_and_keeps_keyboard_navigation_working()
     ui.state.power.status.reboot_error = Some("Reboot is no longer available.".into());
     ui.rebuild(&view);
     ui.dispatch(&view);
-    assert!(ui.harness.access_node(reboot).unwrap().is_disabled());
+    assert!(!ids(&ui.harness).contains(&reboot));
     assert_eq!(ui.harness.focused_widget_id(), Some(lock));
     assert_eq!(
         ui.harness
@@ -148,12 +218,11 @@ fn held_activation_release_does_not_transfer_to_lock(activation: Key) {
         ui.harness.focused_widget_id(),
         Some(ui.button("Lock screen"))
     );
-    assert!(
+    assert!(!ids(&ui.harness).iter().any(|id| {
         ui.harness
-            .access_node(ui.button("Reboot"))
-            .unwrap()
-            .is_disabled()
-    );
+            .access_node(*id)
+            .is_some_and(|node| node.label().as_deref() == Some("Reboot"))
+    }));
     ui.harness
         .process_text_event(TextEvent::key_up(activation.clone()));
     ui.dispatch(&view);

@@ -65,13 +65,17 @@ impl PowerState {
         self.can_action(Action::Suspend)
     }
 
-    pub fn can_action(&self, action: Action) -> bool {
+    pub fn action_available(&self, action: Action) -> bool {
         let available = match action {
             Action::Suspend => self.status.available,
             Action::Reboot => self.status.reboot_available,
             Action::PowerOff => self.status.power_off_available,
         };
-        available && !self.busy() && self.sender.is_some()
+        available && self.sender.is_some()
+    }
+
+    pub fn can_action(&self, action: Action) -> bool {
+        self.action_available(action) && !self.busy()
     }
 
     pub fn busy(&self) -> bool {

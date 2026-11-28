@@ -171,7 +171,7 @@ local authentication for any claimed password-unlock result.
 
 Headless power UI tests use private fake UPower services and a mock coordinator.
 They cover charging, low/critical notifications, deduplication, charging
-suppression, battery removal and unavailable-action explanations without
+suppression, battery removal and omission of unavailable actions without
 suspending the machine. Run them with the software-renderer environment in
 [E2E testing](E2E_TESTING.md). These tests do not establish physical battery
 behavior, firmware wake reliability or external-display policy.

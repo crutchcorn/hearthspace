@@ -601,9 +601,11 @@ impl XState {
                     server_state.cancel_window_interaction(e.window());
                     return;
                 }
-                // XXX: This can technically be driven by keyboard events and other mouse buttons as well,
-                // but I haven't found an application that does this yet. We'll cross that bridge when we get to it.
-                if button != 1 {
+                // Chromium/Electron omit the button number for pointer operations.
+                // Zero still needs the window's click serial and host authorization;
+                // it does not manufacture a primary-button press. Keyboard actions
+                // and explicit nonprimary buttons remain unsupported.
+                if !matches!(button, 0 | 1) {
                     warn!(
                         "Attempted move/resize of {:?} with non left click button ({button})",
                         e.window()

@@ -1025,6 +1025,33 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
 - **Removal:** adopt upstream input-model handling passing these recipient and
   globally-active regressions, then remove only this repair.
 
+## Satellite unspecified pointer-operation button
+
+- **Dependency:** Satellite 0.8.3, pin `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [unspecified button](satellite-unspecified-button.patch), relative to
+  the vendor root, after locally-active-focus. Pin and existing notices remain.
+- **Reason:** ChatGPT's Electron titlebar sent `_NET_WM_MOVERESIZE` direction 8
+  with button 0 during a real primary-button drag. Satellite's button-1-only
+  filter discarded it before any XDG move request reached Hearthspace.
+  [Chromium's X11 implementation](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/base/x/x11_util.cc)
+  explicitly sends zero. The
+  [EWMH specification](https://specifications.freedesktop.org/wm/latest/ar01s04.html)
+  recommends specifying the initiating button; it does not define zero as a
+  primary-button press. This repair treats zero as unspecified and leaves actual
+  input authorization to the host. Inspected upstream
+  [`79aaba68`](https://github.com/Supreeeme/xwayland-satellite/blob/79aaba68930a674540f7deac8a5dd6106cf15dd7/src/xstate/mod.rs)
+  retains the button-1-only filter. This is a local repair, not a backport.
+- **Behavior:** accept zero or one for existing pointer move/resize directions.
+  Preserve the per-window click serial, host seat/serial/target authorization,
+  and live primary-button requirement. Explicit other buttons remain rejected;
+  keyboard move/resize is unchanged. Cancellation retains its separate path.
+- **Regression:** real X11 CSD move and resize requests with button zero must
+  change displayed geometry, stop on release, and leave subsequent clicks
+  responsive. Missing, released and right-button grabs remain rejected; existing
+  explicit-button and cancellation coverage remains required.
+- **Removal:** adopt upstream unspecified-button handling passing these real
+  client and authorization regressions, then remove only this repair.
+
 ## Virtual cursor planes and hotspots
 
 - **Dependency:** pinned Smithay `5c2ba4132556a08abc70ae1771d275ec2cfc031f`

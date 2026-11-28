@@ -68,14 +68,13 @@ fn missing_native_service_is_unavailable_and_cannot_queue_suspend() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     suspend(&mut state, "eDP-1");
     assert!(!state.power.pending);
+    assert!(!state.power.can_suspend());
     let ui = Ui::new(state, power, (300, 280));
-    assert!(
+    assert!(!ids(&ui.harness).into_iter().any(|id| {
         ui.harness
-            .access_node(ui.button("Suspend"))
-            .unwrap()
-            .is_disabled()
-    );
-    assert!(!ui.state.power.can_suspend());
+            .access_node(id)
+            .is_some_and(|node| node.label().as_deref() == Some("Suspend"))
+    }));
 }
 
 #[test]
@@ -176,7 +175,7 @@ fn battery_updates_are_accessible_and_removal_removes_indicator() {
 }
 
 #[test]
-fn power_menu_omits_battery_footer_and_keeps_suspend_feedback_before_actions() {
+fn power_menu_omits_battery_and_unavailable_actions_without_capability_messages() {
     let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into()]);
     state.battery = Some(battery(BatteryState::Charging));
     let expected = state.battery.as_ref().unwrap().accessible_label();
@@ -189,6 +188,7 @@ fn power_menu_omits_battery_footer_and_keeps_suspend_feedback_before_actions() {
     let (sender, _receiver) = tokio::sync::mpsc::channel(1);
     ui.state.power.sender = Some(sender);
     ui.state.power.status.available = true;
+    ui.state.power.status.power_off_available = true;
     ui.rebuild(&power);
     ui.dispatch(&power);
     assert!(
@@ -226,30 +226,9 @@ fn power_menu_omits_battery_footer_and_keeps_suspend_feedback_before_actions() {
     ui.state.power.status.error = Some(error.into());
     ui.rebuild(&power);
     ui.dispatch(&power);
-    assert!(
-        ui.harness
-            .access_node(ui.button("Suspend"))
-            .unwrap()
-            .is_disabled()
-    );
-    let feedback = ids(&ui.harness)
-        .into_iter()
-        .find_map(|id| {
-            ui.harness
-                .access_node(id)
-                .filter(|node| node.value().as_deref() == Some(error))
+    assert!(!ids(&ui.harness).into_iter().any(|id| {
+        ui.harness.access_node(id).is_some_and(|node| {
+            node.label().as_deref() == Some("Suspend") || node.value().as_deref() == Some(error)
         })
-        .expect("the actual suspend failure remains visible")
-        .bounding_box()
-        .unwrap();
-    let lock = ui
-        .harness
-        .access_node(ui.button("Lock screen"))
-        .unwrap()
-        .bounding_box()
-        .unwrap();
-    assert!(
-        feedback.y1 <= lock.y0,
-        "suspend feedback stays above the actions, rather than below Turn off"
-    );
+    }));
 }

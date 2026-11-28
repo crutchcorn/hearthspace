@@ -388,3 +388,6 @@ fn vertical_status_controls_open_and_close_their_popups_from_the_keyboard() {
         }
     }
 }
+
+#[path = "status_hover_tests.rs"]
+mod hover;
