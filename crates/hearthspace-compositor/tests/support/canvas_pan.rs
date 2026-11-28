@@ -28,6 +28,8 @@ mod presentation;
 mod remote_modifiers;
 #[path = "canvas_pan/sources.rs"]
 mod sources;
+#[path = "canvas_pan/startup.rs"]
+mod startup;
 
 fn fixture(remote: bool) -> HeadlessCompositor {
     let mut compositor =
