@@ -48,7 +48,8 @@ pub(super) fn size(
             count => (38.0 * count as f64 - 4.0).max(44.0),
         },
         "notifications" if expanded => {
-            super::text_metrics::width(&notification_text(state), 13.0) + 47.0
+            // Bell (18), gap (9), padding (20), and both 1px borders.
+            super::text_metrics::width(&notification_text(state), 13.0) + 49.0
         }
         "clock" if expanded => (super::text_metrics::width(&clock(format), 14.0) + 24.0).max(70.0),
         "wifi" if expanded => (super::text_metrics::width("Wi-Fi", 11.0) + 43.0).max(44.0),

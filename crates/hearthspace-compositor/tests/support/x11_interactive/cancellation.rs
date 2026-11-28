@@ -54,11 +54,15 @@ impl DeferredResize {
     }
 
     fn wait_requested(&self, client: &mut Client, expected: [i32; 2]) {
+        self.wait_requested_since(client, expected, 0);
+    }
+
+    fn wait_requested_since(&self, client: &mut Client, expected: [i32; 2], after: usize) {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             client.pump();
             if self.windows.iter().all(|(window, _)| {
-                client.resize_requests.iter().any(|event| {
+                client.resize_requests[after..].iter().any(|event| {
                     event.window == *window
                         && [i32::from(event.width), i32::from(event.height)] == expected
                 })
@@ -67,8 +71,8 @@ impl DeferredResize {
             }
             assert!(
                 Instant::now() < deadline,
-                "X11 resize was not requested for all backing windows: expected={expected:?}, events={:?}",
-                client.resize_requests
+                "X11 resize was not requested for all backing windows: expected={expected:?}, events after {after}={:?}",
+                &client.resize_requests[after..]
             );
             thread::sleep(Duration::from_millis(10));
         }
@@ -127,10 +131,14 @@ fn cancel_before_buffer_commit(direction: u32, expected: [i32; 4]) {
     // Observe actual WM resize requests, keeping their geometry unapplied.
     let size = [expected[2], expected[3]];
     deferred.wait_requested(&mut client, size);
+    let requests_before_cancel = client.resize_requests.len();
     client.request(&compositor, 11, 0, (0, 0));
     // The requested viewport is visible before the actual X buffer resizes.
     // Verify both states, rather than confusing viewport adoption with a commit.
     wait_geometry(&compositor, &mut client, expected, RED);
+    // Cancellation clears the XDG resizing state with a final configure. Fence
+    // its actual X11 resize request before attributing any more to later motion.
+    deferred.wait_requested_since(&mut client, size, requests_before_cancel);
     for &(window, _) in &deferred.windows {
         assert_eq!(x11_size(&client, window), [initial[2], initial[3]]);
     }

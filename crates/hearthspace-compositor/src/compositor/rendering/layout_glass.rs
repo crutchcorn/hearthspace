@@ -26,7 +26,7 @@ impl App {
             || layout::layout_confirm_from_app_id(&id).is_some()
             || layout::layout_tooltip_from_app_id(&id).is_some()
             || layout::pinned_window_reveal_from_app_id(&id).is_some()
-            || self.frame_widget_has_material(index);
+            || self.frame_control_has_material(index);
         if !glass {
             return None;
         }

@@ -170,3 +170,14 @@ WM_TAKE_FOCUS; globally-active clients retain message-only delivery. This local
 ICCCM compatibility repair fixes games retaining another application's X focus.
 Version, pin, notices, and timestamp handling remain unchanged. See the ledger
 for reproduction, regression boundaries, and removal conditions.
+
+## Unspecified pointer-operation button
+
+The [unspecified-button patch](../../patches/satellite-unspecified-button.patch),
+after locally-active-focus, accepts EWMH pointer move/resize requests with button
+zero as well as one. Chromium/Electron send zero for titlebar operations. The
+existing per-window Wayland click serial is still required, and Hearthspace
+requires a matching live primary-button grab before starting the operation.
+Explicit nonprimary buttons and keyboard operations remain unsupported. This is
+a local compatibility repair, not an upstream backport; pin, version and notices
+are unchanged. See the patch ledger for regression and removal requirements.
