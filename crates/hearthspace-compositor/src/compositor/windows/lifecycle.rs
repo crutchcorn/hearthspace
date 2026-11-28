@@ -99,7 +99,12 @@ impl App {
         window.kind = kind;
         window.shell_output_name = shell_output_name;
         window.position = position_for_new_window(kind, window.position);
-        if kind.is_shell_chrome() || kind == ManagedWindowKind::DesktopItem {
+        if kind.is_shell_chrome()
+            || matches!(
+                kind,
+                ManagedWindowKind::DesktopItem | ManagedWindowKind::X11Overlay
+            )
+        {
             window.decoration = WindowDecoration::ClientSide;
         }
         if old_kind == ManagedWindowKind::Normal && kind != ManagedWindowKind::Normal {

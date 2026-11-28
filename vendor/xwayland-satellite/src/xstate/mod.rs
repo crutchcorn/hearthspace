@@ -1,5 +1,6 @@
 mod settings;
 use settings::Settings;
+mod overlay;
 mod selection;
 mod size_hints;
 use selection::{Selection, SelectionState};
@@ -649,6 +650,16 @@ impl XState {
         server_state: &mut super::RealServerState,
         window: x::Window,
     ) -> XResult<()> {
+        let state = self.connection.wait_for_reply(self.get_property_cookie(
+            window,
+            self.atoms.net_wm_state,
+            x::ATOM_ATOM,
+            1024,
+        ))?;
+        let fullscreen = state.format() == 32
+            && state.bytes_after() == 0
+            && state.value::<x::Atom>().contains(&self.atoms.wm_fullscreen);
+        server_state.set_initial_fullscreen(window, fullscreen);
         let mut title = self.get_net_wm_name(window)?;
         if title.is_none() {
             title = self.get_wm_name(window)?;
@@ -698,7 +709,9 @@ impl XState {
             wm_class,
             wm_normal_hints: size_hints,
         };
-        let role = heuristics.guess_window_role(&self.window_atoms);
+        let role = self
+            .screen_overlay_role(server_state, window, &heuristics, &state)?
+            .unwrap_or_else(|| heuristics.guess_window_role(&self.window_atoms));
         if log::log_enabled!(target: "window_role_heuristics", log::Level::Debug) {
             debug!(
                 target: "window_role_heuristics",
@@ -965,6 +978,9 @@ xcb::atoms_struct! {
         wm_pid => b"_NET_WM_PID" only_if_exists = false,
         net_wm_state => b"_NET_WM_STATE" only_if_exists = false,
         gtk_frame_extents => b"_GTK_FRAME_EXTENTS" only_if_exists = false,
+        wm_above => b"_NET_WM_STATE_ABOVE" only_if_exists = false,
+        wm_skip_taskbar => b"_NET_WM_STATE_SKIP_TASKBAR" only_if_exists = false,
+        wm_skip_pager => b"_NET_WM_STATE_SKIP_PAGER" only_if_exists = false,
         wm_fullscreen => b"_NET_WM_STATE_FULLSCREEN" only_if_exists = false,
         wm_maximized_horz => b"_NET_WM_STATE_MAXIMIZED_HORZ" only_if_exists = false,
         wm_maximized_vert => b"_NET_WM_STATE_MAXIMIZED_VERT" only_if_exists = false,
@@ -1001,6 +1017,10 @@ xcb::atoms_struct! {
         dropdown_menu => b"_NET_WM_WINDOW_TYPE_DROPDOWN_MENU" only_if_exists = false,
         utility => b"_NET_WM_WINDOW_TYPE_UTILITY" only_if_exists = false,
         tooltip => b"_NET_WM_WINDOW_TYPE_TOOLTIP" only_if_exists = false,
+        desktop => b"_NET_WM_WINDOW_TYPE_DESKTOP" only_if_exists = false,
+        dock => b"_NET_WM_WINDOW_TYPE_DOCK" only_if_exists = false,
+        toolbar => b"_NET_WM_WINDOW_TYPE_TOOLBAR" only_if_exists = false,
+        notification => b"_NET_WM_WINDOW_TYPE_NOTIFICATION" only_if_exists = false,
         combo => b"_NET_WM_WINDOW_TYPE_COMBO" only_if_exists = false,
     }
 }
@@ -1169,6 +1189,7 @@ pub enum WindowRole {
     /// A special type of toplevel which is constrained to a fixed size
     /// Commonly the window which displays while the main application is starting up
     Splash,
+    Overlay(u32, Option<hecs::Entity>),
 }
 impl WindowRole {
     /// Define a toplevel or popup with no special properties

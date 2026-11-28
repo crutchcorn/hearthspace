@@ -1,5 +1,5 @@
 use super::*;
-use hecs::{CommandBuffer, DynamicBundle};
+use hecs::CommandBuffer;
 use log::{debug, error, trace, warn};
 use macros::simple_event_shunt;
 use std::sync::{Arc, OnceLock};
@@ -93,7 +93,9 @@ impl<S: X11Selection> Dispatch<WlSurface, Entity> for InnerServerState<S> {
         let data = state.world.entity(*entity).unwrap();
         let mut role = data.get::<&mut SurfaceRole>();
         let xdg = role.as_ref().and_then(|role| role.xdg());
-        let configured = xdg.is_none_or(|xdg| xdg.configured);
+        let configured = xdg.map_or(!data.has::<association::AwaitingWindow>(), |xdg| {
+            xdg.configured
+        });
         let client = data.get::<&client::wl_surface::WlSurface>().unwrap();
 
         let mut cmd = CommandBuffer::new();
@@ -148,6 +150,7 @@ impl<S: X11Selection> Dispatch<WlSurface, Entity> for InnerServerState<S> {
 
                 if let Some(role) = role.as_mut() {
                     role.destroy();
+                    cmd.remove_one::<SurfaceRole>(*entity);
                 }
                 client.destroy();
 
@@ -160,6 +163,15 @@ impl<S: X11Selection> Dispatch<WlSurface, Entity> for InnerServerState<S> {
                 let (viewport, fractional) = query.get().unwrap();
                 viewport.destroy();
 
+                if data.has::<association::AwaitingWindow>() {
+                    cmd.remove_one::<association::AwaitingWindow>(*entity);
+                }
+                if data.has::<SurfaceAttach>() {
+                    cmd.remove_one::<SurfaceAttach>(*entity);
+                }
+                if data.has::<WlCallback>() {
+                    cmd.remove_one::<WlCallback>(*entity);
+                }
                 cmd.remove::<event::SurfaceBundle>(*entity);
                 if let Some(f) = fractional {
                     f.destroy();
@@ -1529,6 +1541,10 @@ impl<S: X11Selection> Dispatch<XwaylandShellV1, ()> for InnerServerState<S> {
                 }
 
                 data_init.init(id, e);
+                state
+                    .world
+                    .insert_one(e, association::AwaitingWindow)
+                    .unwrap();
             }
             Request::Destroy => {}
             _ => unreachable!(),
@@ -1552,40 +1568,7 @@ impl<S: X11Selection> Dispatch<XwaylandSurfaceV1, Entity> for InnerServerState<S
                 serial_lo,
                 serial_hi,
             } => {
-                let surface_id = state.world.get::<&WlSurface>(*entity).unwrap().id();
-                let serial = SurfaceSerial([serial_lo, serial_hi]);
-                let win_entity = state
-                    .world
-                    .query_mut::<&SurfaceSerial>()
-                    .without::<&WlSurface>()
-                    .into_iter()
-                    .find(|(_, surface_serial)| **surface_serial == serial)
-                    .map(|i| i.0);
-
-                if let Some(win_entity) = win_entity {
-                    let bundle = state.world.take(win_entity).unwrap();
-                    if !bundle.has::<x::Window>() {
-                        warn!(
-                            "Window with same serial ({serial:?}) as {surface_id} has been destroyed?"
-                        );
-                        return;
-                    }
-                    let mut builder = hecs::EntityBuilder::new();
-                    builder.add_bundle(bundle);
-                    state.world.insert(*entity, builder.build()).unwrap();
-                    state.world.remove_one::<SurfaceSerial>(*entity).unwrap();
-                    let data = state.world.entity(*entity).unwrap();
-                    let win = data.get::<&x::Window>().as_deref().copied().unwrap();
-                    state.windows.insert(win, *entity);
-                    debug!("associate {surface_id} with {win:?} (serial {serial:?})");
-                    if data.get::<&WindowData>().unwrap().mapped
-                        && state.create_role_window(win, *entity)
-                    {
-                        state.activate_window(win);
-                    }
-                } else {
-                    state.world.insert(*entity, (serial,)).unwrap();
-                }
+                state.set_surface_serial(*entity, [serial_lo, serial_hi]);
             }
             Request::Destroy => {}
             _ => unreachable!(),

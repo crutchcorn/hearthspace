@@ -27,6 +27,7 @@ mod hit_testing;
 pub(super) mod identity;
 mod lifecycle;
 mod ordering;
+pub(in crate::compositor) mod overlays;
 mod power_confirmation;
 pub(super) use power_confirmation::PowerConfirmation;
 mod state;
@@ -77,7 +78,11 @@ pub(super) fn window_kind_for_toplevel(surface: &ToplevelSurface) -> ManagedWind
     // X11 class names remain application metadata, even when they resemble
     // a shell role. Satellite exposes all of them through its private client.
     if super::client::is_x11_surface(surface.wl_surface()) {
-        return ManagedWindowKind::Normal;
+        return if overlays::hint_for_toplevel(surface).is_some() {
+            ManagedWindowKind::X11Overlay
+        } else {
+            ManagedWindowKind::Normal
+        };
     }
     let app_id = toplevel_app_id(surface);
     if app_id.as_deref().is_some_and(is_frame_shell_app_id) {
@@ -206,9 +211,9 @@ pub(super) fn position_for_new_window(
     match kind {
         ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => fallback,
         ManagedWindowKind::ShellBar => CanvasPoint { x: 0, y: 0 },
-        ManagedWindowKind::ShellWatcher | ManagedWindowKind::ControlOsd => {
-            CanvasPoint { x: 0, y: 0 }
-        }
+        ManagedWindowKind::ShellWatcher
+        | ManagedWindowKind::ControlOsd
+        | ManagedWindowKind::X11Overlay => CanvasPoint { x: 0, y: 0 },
         ManagedWindowKind::Launcher => CanvasPoint {
             x: 0,
             y: CONTROL_BAR_HEIGHT,
@@ -223,7 +228,8 @@ pub(super) fn decoration_for_new_window(kind: ManagedWindowKind) -> WindowDecora
         | ManagedWindowKind::ShellBar
         | ManagedWindowKind::Launcher
         | ManagedWindowKind::ShellWatcher
-        | ManagedWindowKind::ControlOsd => WindowDecoration::ClientSide,
+        | ManagedWindowKind::ControlOsd
+        | ManagedWindowKind::X11Overlay => WindowDecoration::ClientSide,
     }
 }
 
@@ -231,7 +237,9 @@ impl App {
     pub(super) fn set_keyboard_focus_to_window(&mut self, window_index: usize, surface: WlSurface) {
         if matches!(
             self.windows[window_index].kind,
-            ManagedWindowKind::ControlOsd | ManagedWindowKind::ShellWatcher
+            ManagedWindowKind::ControlOsd
+                | ManagedWindowKind::ShellWatcher
+                | ManagedWindowKind::X11Overlay
         ) || self.session_locked()
             || (self.canvas_search_active() && !self.canvas_search_panel_allowed(window_index))
             || self.window_switcher_active()
@@ -333,12 +341,17 @@ impl App {
         if let Some(root) = self.windows[window_index].surface.wl_surface() {
             let bbox = bbox_from_surface_tree(&root, Point::<i32, Logical>::from((0, 0)));
             self.windows[window_index].content_bbox_size = bbox.size;
+            self.windows[window_index].content_bbox_loc = bbox.loc;
         }
     }
 
     pub(super) fn refresh_normal_window_outputs(&self) {
         for (window_index, window) in self.windows.iter().enumerate() {
-            if window.kind == ManagedWindowKind::DesktopItem && window.mapped {
+            if matches!(
+                window.kind,
+                ManagedWindowKind::DesktopItem | ManagedWindowKind::X11Overlay
+            ) && window.mapped
+            {
                 if let Some(surface) = window.surface.wl_surface() {
                     self.enter_outputs_intersecting(
                         &surface,
@@ -493,7 +506,9 @@ impl App {
                     state.bounds = bar_size;
                     state.decoration_mode = Some(DecorationMode::ServerSide);
                 }
-                ManagedWindowKind::Launcher | ManagedWindowKind::ControlOsd => {
+                ManagedWindowKind::Launcher
+                | ManagedWindowKind::ControlOsd
+                | ManagedWindowKind::X11Overlay => {
                     // Content measurements arrive as fixed min/max hints. The
                     // palette sizing path then applies the output bounds and
                     // responsive search width.
@@ -618,7 +633,7 @@ impl App {
             );
         }
         let window = &self.windows[window_index];
-        title_bar_canvas_rect_for(window.position, window.content_bbox_size.w)
+        title_bar_canvas_rect_for(window.position, self.window_geometry_size(window_index).w)
     }
 
     pub(super) fn titlebar_button_screen_rect(
@@ -666,10 +681,13 @@ impl App {
             return rect.loc + Point::from((0, chrome))
                 - self.window_surface_geometry_loc(window_index);
         }
-        content_canvas_origin_for(
-            self.windows[window_index].position,
-            self.has_compositor_chrome(window_index),
-        )
+        let chrome = self.has_compositor_chrome(window_index);
+        let origin = content_canvas_origin_for(self.windows[window_index].position, chrome);
+        if chrome {
+            origin - self.window_surface_geometry_loc(window_index)
+        } else {
+            origin
+        }
     }
 
     pub(super) fn has_compositor_chrome(&self, window_index: usize) -> bool {
@@ -709,7 +727,11 @@ impl App {
             return Rectangle::new(rect.loc, (size.w, size.h + chrome).into());
         }
         if self.has_compositor_chrome(window_index) {
-            return window_canvas_rect_for(window.position, window.content_bbox_size, true);
+            return window_canvas_rect_for(
+                window.position,
+                self.window_geometry_size(window_index),
+                true,
+            );
         }
         let surface_origin = self.content_canvas_origin(window_index);
         let geometry_loc = self.window_surface_geometry_loc(window_index);
@@ -738,13 +760,25 @@ impl App {
 
     pub(super) fn window_surface_geometry_loc(&self, window_index: usize) -> Point<i32, Logical> {
         match &self.windows[window_index].surface {
-            ManagedSurface::Xdg(surface) => toplevel_geometry_loc(surface.wl_surface()),
+            ManagedSurface::Xdg(surface) => toplevel_geometry_loc(
+                surface.wl_surface(),
+                Rectangle::new(
+                    self.windows[window_index].content_bbox_loc,
+                    self.windows[window_index].content_bbox_size,
+                ),
+            ),
         }
     }
 
     fn window_surface_geometry_size(&self, window_index: usize) -> Option<Size<i32, Logical>> {
         match &self.windows[window_index].surface {
-            ManagedSurface::Xdg(surface) => toplevel_geometry_size(surface.wl_surface()),
+            ManagedSurface::Xdg(surface) => toplevel_geometry_size(
+                surface.wl_surface(),
+                Rectangle::new(
+                    self.windows[window_index].content_bbox_loc,
+                    self.windows[window_index].content_bbox_size,
+                ),
+            ),
         }
     }
 }

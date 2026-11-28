@@ -21,6 +21,7 @@ use crate::compositor::{App, client::ClientState};
 
 mod clipboard;
 pub(in crate::compositor) mod interaction;
+pub(in crate::compositor) mod overlay;
 mod process;
 mod settings;
 pub(in crate::compositor) use process::Satellite;

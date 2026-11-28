@@ -1,0 +1,228 @@
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+index 67f3992c..38fe17df 100644
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -113,6 +113,7 @@ struct WindowAttributes {
+     dims: WindowDims,
+     size_hints: Option<WmNormalHints>,
+     frame_extents: Option<frame_extents::Extents>,
++    initial_fullscreen: bool,
+     title: Option<WmName>,
+     class: Option<String>,
+     group: Option<x::Window>,
+@@ -933,6 +934,16 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+         self.windows.insert(window, id);
+     }
+
++    pub fn set_initial_fullscreen(&mut self, window: x::Window, fullscreen: bool) {
++        if let Some(id) = self.windows.get(&window).copied() {
++            self.world
++                .get::<&mut WindowData>(id)
++                .unwrap()
++                .attrs
++                .initial_fullscreen = fullscreen;
++        }
++    }
++
+     pub fn set_override_redirect(&mut self, window: x::Window, override_redirect: bool) {
+         let Some(id) = self.windows.get(&window).copied() else {
+             debug!(
+@@ -1436,7 +1447,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+     fn create_role_window(&mut self, window: x::Window, entity: Entity) -> bool {
+         let xdg_surface;
+         let mut popup_for = None;
+-        let mut fullscreen = false;
++        let fullscreen;
+         let splash;
+
+         {
+@@ -1453,13 +1464,11 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+             }
+             splash = window_data.attrs.role == WindowRole::Splash;
+
+-            let (width, height) = (window_data.attrs.dims.width, window_data.attrs.dims.height);
+-            for (_, dimensions) in self.world.query::<&OutputDimensions>().iter() {
+-                if dimensions.width == width as i32 && dimensions.height == height as i32 {
+-                    fullscreen = true;
+-                    popup_for = None;
+-                    break;
+-                }
++            // Output-sized windows are not necessarily fullscreen. In particular,
++            // Steam can map ordinary helper windows at the output dimensions.
++            fullscreen = window_data.attrs.initial_fullscreen;
++            if fullscreen {
++                popup_for = None;
+             }
+         }
+
+diff --git a/src/server/tests.rs b/src/server/tests.rs
+index a13cb149..858a1e6b 100644
+--- a/src/server/tests.rs
++++ b/src/server/tests.rs
+@@ -2386,7 +2386,7 @@ fn tablet_smoke_test() {
+ }
+
+ #[test]
+-fn fullscreen_heuristic() {
++fn initial_fullscreen_requires_explicit_state() {
+     let (mut f, comp) = TestFixture::new_with_compositor();
+     let (_, output) = f.new_output(0, 0);
+
+@@ -2395,21 +2395,29 @@ fn fullscreen_heuristic() {
+     f.testwl.move_surface_to_output(id, &output);
+     f.run();
+
+-    let mut check_fullscreen = |id, override_redirect| {
++    let mut check_fullscreen = |id, initial_fullscreen| {
+         let window = Window::new(id);
+         let (buffer, surface) = comp.create_surface();
++        // An ordinary output-sized window stays windowed; an explicit request
++        // works even when its initial dimensions are smaller than the output.
++        let (width, height) = if initial_fullscreen {
++            (400, 300)
++        } else {
++            (1000, 1000)
++        };
+         let data = WindowData {
+             mapped: true,
+             dims: WindowDims {
+                 x: 0,
+                 y: 0,
+-                // Outputs default to 1000x1000 in testwl
+-                width: 1000,
+-                height: 1000,
++                width,
++                height,
+             },
+             fullscreen: false,
+         };
+-        f.new_window(window, override_redirect, data);
++        f.new_window(window, false, data);
++        f.satellite
++            .set_initial_fullscreen(window, initial_fullscreen);
+         f.map_window(&comp, window, &surface.obj, &buffer);
+         f.run();
+         let id = f.check_new_surface();
+@@ -2425,13 +2433,27 @@ fn fullscreen_heuristic() {
+             panic!("Expected toplevel, got {:?}", surface_data.role);
+         };
+
+-        assert!(
++        assert_eq!(
+             toplevel_data
+                 .states
+                 .contains(&xdg_toplevel::State::Fullscreen),
++            initial_fullscreen,
+             "states: {:?}",
+             toplevel_data.states
+         );
++        // Role creation precedes the first configured client-buffer commit.
++        let states = toplevel_data.states.clone();
++        f.testwl
++            .configure_toplevel(id, width.into(), height.into(), states);
++        f.run();
++        assert!(
++            f.testwl
++                .get_surface_data(id)
++                .unwrap()
++                .window_geometry
++                .is_some(),
++            "the configured client must commit XDG window geometry"
++        );
+     };
+
+     check_fullscreen(2, false);
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+index 57a5ae20..8f4c203e 100644
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -649,6 +649,16 @@ impl XState {
+         server_state: &mut super::RealServerState,
+         window: x::Window,
+     ) -> XResult<()> {
++        let state = self.connection.wait_for_reply(self.get_property_cookie(
++            window,
++            self.atoms.net_wm_state,
++            x::ATOM_ATOM,
++            1024,
++        ))?;
++        let fullscreen = state.format() == 32
++            && state.bytes_after() == 0
++            && state.value::<x::Atom>().contains(&self.atoms.wm_fullscreen);
++        server_state.set_initial_fullscreen(window, fullscreen);
+         let mut title = self.get_net_wm_name(window)?;
+         if title.is_none() {
+             title = self.get_wm_name(window)?;
+diff --git a/testwl/src/lib.rs b/testwl/src/lib.rs
+index a8bd77f5..fc85a968 100644
+--- a/testwl/src/lib.rs
++++ b/testwl/src/lib.rs
+@@ -109,6 +109,8 @@ pub struct Viewport {
+ pub struct SurfaceData {
+     pub surface: WlSurface,
+     pub buffer: Option<WlBuffer>,
++    pub window_geometry: Option<Rect>,
++    pending_window_geometry: Option<Rect>,
+     pub last_damage: Option<BufferDamage>,
+     pub role: Option<SurfaceRole>,
+     pub last_enter_serial: Option<u32>,
+@@ -1711,6 +1713,28 @@ impl Dispatch<XdgSurface, SurfaceId> for State {
+                 let data = state.surfaces.get_mut(surface_id).unwrap();
+                 assert!(data.xdg().last_configure_serial >= serial);
+             }
++            xdg_surface::Request::SetWindowGeometry {
++                x,
++                y,
++                width,
++                height,
++            } => {
++                if width <= 0 || height <= 0 {
++                    resource.post_error(
++                        xdg_surface::Error::InvalidSize,
++                        "window geometry must have positive dimensions",
++                    );
++                    return;
++                }
++                let data = state.surfaces.get_mut(surface_id).unwrap();
++                data.pending_window_geometry = Some(Rect {
++                    offset: Vec2 { x, y },
++                    size: Vec2 {
++                        x: width,
++                        y: height,
++                    },
++                });
++            }
+             xdg_surface::Request::Destroy => {
+                 let data = state.surfaces.get_mut(surface_id).unwrap();
+                 let role_alive = data.role.is_none()
+@@ -1730,6 +1754,8 @@ impl Dispatch<XdgSurface, SurfaceId> for State {
+                         },
+                     );
+                 }
++                data.window_geometry = None;
++                data.pending_window_geometry = None;
+             }
+             other => todo!("unhandled request {other:?}"),
+         }
+@@ -1962,6 +1988,8 @@ impl Dispatch<WlCompositor, ()> for State {
+                     SurfaceData {
+                         surface,
+                         buffer: None,
++                        window_geometry: None,
++                        pending_window_geometry: None,
+                         last_damage: None,
+                         role: None,
+                         last_enter_serial: None,
+@@ -2049,7 +2077,11 @@ impl Dispatch<WlSurface, ()> for State {
+                     height,
+                 });
+             }
+-            Commit => {}
++            Commit => {
++                if let Some(geometry) = data.pending_window_geometry.take() {
++                    data.window_geometry = Some(geometry);
++                }
++            }
+             Destroy => {
+                 let id = SurfaceId(resource.id().protocol_id());
+                 if let Some(kb) = state

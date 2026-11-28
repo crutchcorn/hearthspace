@@ -109,6 +109,8 @@ pub struct Viewport {
 pub struct SurfaceData {
     pub surface: WlSurface,
     pub buffer: Option<WlBuffer>,
+    pub window_geometry: Option<Rect>,
+    pending_window_geometry: Option<Rect>,
     pub last_damage: Option<BufferDamage>,
     pub role: Option<SurfaceRole>,
     pub last_enter_serial: Option<u32>,
@@ -1711,6 +1713,28 @@ impl Dispatch<XdgSurface, SurfaceId> for State {
                 let data = state.surfaces.get_mut(surface_id).unwrap();
                 assert!(data.xdg().last_configure_serial >= serial);
             }
+            xdg_surface::Request::SetWindowGeometry {
+                x,
+                y,
+                width,
+                height,
+            } => {
+                if width <= 0 || height <= 0 {
+                    resource.post_error(
+                        xdg_surface::Error::InvalidSize,
+                        "window geometry must have positive dimensions",
+                    );
+                    return;
+                }
+                let data = state.surfaces.get_mut(surface_id).unwrap();
+                data.pending_window_geometry = Some(Rect {
+                    offset: Vec2 { x, y },
+                    size: Vec2 {
+                        x: width,
+                        y: height,
+                    },
+                });
+            }
             xdg_surface::Request::Destroy => {
                 let data = state.surfaces.get_mut(surface_id).unwrap();
                 let role_alive = data.role.is_none()
@@ -1730,6 +1754,8 @@ impl Dispatch<XdgSurface, SurfaceId> for State {
                         },
                     );
                 }
+                data.window_geometry = None;
+                data.pending_window_geometry = None;
             }
             other => todo!("unhandled request {other:?}"),
         }
@@ -1962,6 +1988,8 @@ impl Dispatch<WlCompositor, ()> for State {
                     SurfaceData {
                         surface,
                         buffer: None,
+                        window_geometry: None,
+                        pending_window_geometry: None,
                         last_damage: None,
                         role: None,
                         last_enter_serial: None,
@@ -2049,7 +2077,11 @@ impl Dispatch<WlSurface, ()> for State {
                     height,
                 });
             }
-            Commit => {}
+            Commit => {
+                if let Some(geometry) = data.pending_window_geometry.take() {
+                    data.window_geometry = Some(geometry);
+                }
+            }
             Destroy => {
                 let id = SurfaceId(resource.id().protocol_id());
                 if let Some(kb) = state

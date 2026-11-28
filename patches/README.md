@@ -1105,3 +1105,114 @@ See [vendored provenance and refresh steps](../vendor/accesskit_atspi_common/PRO
   cursor-surface interoperability, and pointer removal.
 - **Removal:** remove only this patch when a compatible Smithay version reports
   the required error and passes those protocol regressions without it.
+
+## Satellite explicit initial fullscreen
+
+- **Dependency:** vendored Satellite 0.8.3 at `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [explicit fullscreen](satellite-explicit-fullscreen.patch), relative
+  to `vendor/xwayland-satellite`, applied after the existing repairs. It changes
+  `src/server/{mod.rs,tests.rs}`, `src/xstate/mod.rs`, and the test-only
+  `testwl/src/lib.rs` compositor fixture.
+- **Reason:** matching an output's dimensions is not a fullscreen request.
+  Steam can map ordinary helper windows at exactly those dimensions, causing
+  shell suppression and unavailable canvas navigation. Conversely an explicit
+  initial fullscreen request need not start with an output-sized buffer.
+- **Behavior:** read the initial `_NET_WM_STATE_FULLSCREEN` property at mapping;
+  use that state when creating the XDG toplevel. Keep existing mapped-window
+  EWMH fullscreen messages. No system Xwayland patch or app-specific class rule.
+- **Upstream basis:** narrow local change against the pinned source, not a
+  claimed upstream backport. Package version, pin, and notices are unchanged.
+- **Regression:** `headless_control` filter `satellite::steam_regressions` uses
+  real X11 clients and Satellite/Xwayland to check ordinary output-sized windows,
+  canvas zoom/resize admission, and smaller clients with explicit initial
+  fullscreen plus restore. It also covers committed XDG geometry clamping in
+  Hearthspace; that compositor fix is outside this Satellite patch.
+  The vendored `initial_fullscreen_requires_explicit_state` unit test replaces
+  the old heuristic expectation with both explicit-state cases. Standalone
+  vendor tests have a separate lockfile from the workspace checks.
+  The test compositor accepts positive XDG window geometry on commit and clears
+  it when the XDG role is destroyed; it previously panicked on that valid request.
+- **Removal:** remove only this repair after a compatible upstream version
+  passes both initial-state cases without the dimension heuristic. Preserve
+  other patches until their own removal conditions are satisfied. Fixture source
+  alone does not establish passing runtime or native Steam acceptance.
+
+## Satellite generic screen overlays
+
+- **Dependency:** Satellite 0.8.3, pinned to
+  `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [screen overlays](satellite-screen-overlays.patch), relative to
+  `vendor/xwayland-satellite`, after explicit-fullscreen. It adds
+  `protocols/xwayland-satellite-overlay-v1.xml`, `src/server/overlay.rs`, and
+  `src/xstate/overlay.rs`, and changes `src/server/{mod.rs,event.rs}` and
+  `src/xstate/{mod.rs,tests.rs}` (including synthetic atom setup).
+- **Reason:** a client-drawn desktop toast can use an unmanaged utility role
+  instead of the explicit notification type. Treating it as an ordinary popup
+  can anchor it to unrelated canvas content or the origin.
+- **Behavior:** recognize the first supported EWMH type. Notification windows
+  qualify directly; utility windows require override-redirect, no transient
+  parent, and all of ABOVE/SKIP_TASKBAR/SKIP_PAGER. Normalize requested X root
+  geometry against host output bounds, choose the closest output and requested
+  corner, and send that metadata before mapping through an optional private
+  extension. Do not infer fullscreen for an overlay. Without the extension,
+  preserve existing role selection. No title/class matching or system Xwayland
+  repair is added.
+- **Upstream basis:** local integration against the pin and
+  [EWMH window types and states](https://specifications.freedesktop.org/wm/latest/ar01s05.html).
+  The existing XDG lifecycle remains in use; output-space placement is host
+  policy. This is not a merged upstream backport. The version, revision, notices,
+  and previous patches remain unchanged.
+- **Regression:** the workspace `headless_control` filter `satellite::overlays`
+  runs generic X11 clients through Satellite and the private Xwayland. It checks
+  exact clicks without keyboard-focus changes, pan/zoom independence, HiDPI
+  logical placement, explicit
+  notifications, stacking, live frame clearance, strict role exclusions,
+  destruction during a held press, and remapping to a new corner. Compositor
+  unit tests exercise real private protocol requests, secondary-output routing,
+  removed-output fallback with surface output-enter events and global visibility; mapping/content extents are
+  fixture inputs there. Vendor `server::overlay::tests` checks translated output
+  layouts, gaps and out-of-root requests. Geometry tests cover small-output
+  padding. Standalone vendor tests use their own lockfile. Native Steam
+  presentation remains a separate acceptance boundary.
+- **Removal:** replace this extension only when a compatible upstream mechanism
+  carries the same role, output and corner information while preserving the
+  host's safe-area, focus, lock and sequence-ownership behavior. Pass the same
+  real-client regressions, migrate both bridge endpoints, then remove only this
+  patch and its provenance/ledger entries. Preserve unrelated repairs.
+
+## Satellite surface association arrival order
+
+- **Dependency:** Satellite 0.8.3 at
+  `7bf5e0dcb0d4250860b24b04a6cb3ddeada515d0`.
+- **Patch:** [surface association](satellite-surface-association.patch), relative
+  to `vendor/xwayland-satellite`, after screen-overlays. It changes
+  `src/server/{mod.rs,dispatch.rs,tests.rs}` and adds `src/server/association.rs`
+  and `src/server/tests/association_order.rs`.
+- **Reason:** pairing ran only when the Wayland serial request arrived after
+  its X11 counterpart. Reverse arrival or association before MapNotify could
+  leave a window without a host role. Forwarding its initial buffer before that
+  role existed could also lose the buffer when initializing XDG state.
+- **Behavior:** match the exact two-part serial from either stream. Create the
+  host role when both mapping and association exist; reuse the existing
+  configure-wait attachment/callback storage until then. Clear pending surface
+  content and roles during teardown so replacement surfaces cannot inherit it.
+  Ordinary cursor/subsurface forwarding is unchanged. No sleeps, retries,
+  application rules, dependency upgrade, or system Xwayland patch.
+- **Upstream basis:** local repair of the pin. Inspected upstream
+  [`79aaba68`](https://github.com/Supreeeme/xwayland-satellite/tree/79aaba68930a674540f7deac8a5dd6106cf15dd7)
+  still has the one-direction path as of 2026-11-28. The
+  [standard Xwayland shell serial](https://wayland.app/protocols/xwayland-shell-v1#xwayland_surface_v1:request:set_serial)
+  is the identity boundary. This is not an upstream backport; package version,
+  pin, notices and other repairs remain unchanged.
+- **Regression:** vendor `server::tests::association_order` uses real Wayland
+  requests and the test compositor, substituting only its external X connection.
+  Two tests fail before the repair: Wayland-serial-first and association-before-map.
+  Both require the host toplevel and its initial buffer after configure. A third
+  checks destroyed pending windows and reused XIDs. Workspace
+  `headless_control` Satellite tests use the real private X server and include
+  immediate notification mapping and remapping; native Steam remains separate.
+- **Removal:** adopt an upstream implementation that passes both serial orders,
+  mapping orders, initial-buffer retention and stale-identity tests without the
+  patch. Remove only this patch and its ledger/provenance entries, preserving
+  the optional overlay bridge and all unrelated repairs until their own removal
+  conditions are met.

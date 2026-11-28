@@ -18,7 +18,10 @@ impl App {
         })
     }
 
-    pub(super) fn layout_glass_rect(&self, index: usize) -> Option<Rectangle<i32, Logical>> {
+    pub(in crate::compositor) fn layout_glass_rect(
+        &self,
+        index: usize,
+    ) -> Option<Rectangle<i32, Logical>> {
         let id = window_app_id(&self.windows[index].surface)?;
         let glass = self.frame_group_has_material(index)
             || self.windows[index].is_frame_grip()

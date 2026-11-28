@@ -16,11 +16,10 @@ use smithay::{
     },
     desktop::PopupManager,
     input::pointer::CursorImageAttributes,
-    utils::{IsAlive, Logical, Physical, Point, Rectangle, Size},
-    wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
+    utils::{IsAlive, Logical, Physical, Point, Rectangle},
+    wayland::compositor::with_states,
 };
 use std::sync::Mutex;
-use wayland_server::protocol::wl_surface;
 
 use super::{App, ManagedWindowKind, window_frame};
 
@@ -306,7 +305,7 @@ impl App {
                 self.is_power_confirmation(*index),
                 self.layout_render_layer(*index).unwrap_or_else(|| {
                     match self.windows[*index].kind {
-                        ManagedWindowKind::ControlOsd => 130,
+                        ManagedWindowKind::ControlOsd | ManagedWindowKind::X11Overlay => 130,
                         ManagedWindowKind::Launcher => 110,
                         ManagedWindowKind::ShellBar | ManagedWindowKind::ShellWatcher => 100,
                         ManagedWindowKind::Normal => 10,
@@ -425,7 +424,9 @@ impl App {
                     self.launcher_screen_origins(index)
                 }
                 ManagedWindowKind::ShellWatcher => Vec::new(),
-                ManagedWindowKind::Normal | ManagedWindowKind::DesktopItem => {
+                ManagedWindowKind::Normal
+                | ManagedWindowKind::DesktopItem
+                | ManagedWindowKind::X11Overlay => {
                     vec![projection.origin.to_i32_round().to_physical(1)]
                 }
             };
@@ -823,37 +824,8 @@ fn point_in_logical_rect(point: Point<f64, Logical>, rect: Rectangle<i32, Logica
         && point.y < f64::from(rect.loc.y + rect.size.h.max(1))
 }
 
-/// The offset of a toplevel's window geometry within its surface, used to place
-/// popups relative to the parent surface origin. Defaults to `(0, 0)` when the
-/// client has not set an explicit window geometry.
-pub(super) fn toplevel_geometry_loc(surface: &wl_surface::WlSurface) -> Point<i32, Logical> {
-    with_states(surface, |states| {
-        states
-            .cached_state
-            .get::<SurfaceCachedState>()
-            .current()
-            .geometry
-            .map(|geometry| geometry.loc)
-            .unwrap_or_default()
-    })
-}
-
-/// The size of a toplevel's window geometry (the visible window excluding any
-/// client-side decoration shadow margins). `None` when the client has not set
-/// an explicit window geometry, in which case the caller falls back to the
-/// surface-tree bounding box.
-pub(super) fn toplevel_geometry_size(
-    surface: &wl_surface::WlSurface,
-) -> Option<Size<i32, Logical>> {
-    with_states(surface, |states| {
-        states
-            .cached_state
-            .get::<SurfaceCachedState>()
-            .current()
-            .geometry
-            .map(|geometry| geometry.size)
-    })
-}
+mod geometry;
+pub(super) use geometry::{toplevel_geometry_loc, toplevel_geometry_size};
 
 #[cfg(test)]
 mod tests {

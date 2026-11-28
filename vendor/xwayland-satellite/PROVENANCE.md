@@ -181,3 +181,50 @@ requires a matching live primary-button grab before starting the operation.
 Explicit nonprimary buttons and keyboard operations remain unsupported. This is
 a local compatibility repair, not an upstream backport; pin, version and notices
 are unchanged. See the patch ledger for regression and removal requirements.
+
+## Explicit initial fullscreen state
+
+The [explicit-fullscreen patch](../../patches/satellite-explicit-fullscreen.patch)
+reads initial `_NET_WM_STATE_FULLSCREEN` and removes the output-dimension guess.
+An ordinary output-sized Steam/helper window must not hide the shell or disable
+canvas navigation. Explicit initial fullscreen remains supported even when the
+client initially has a smaller buffer. This is a local EWMH compatibility repair
+against the existing pin, not an upstream backport. Package version, revision,
+notices, and all other repairs remain unchanged. See the patch ledger for real
+X11 regressions and removal conditions. The old heuristic unit-test expectation
+is replaced with explicit-state cases.
+The test-only compositor also applies XDG window geometry on commit so those
+tests can exercise mapped clients instead of panicking on that request.
+
+## Generic screen overlays
+
+The independent [screen-overlay patch](../../patches/satellite-screen-overlays.patch),
+after explicit-fullscreen, recognizes EWMH notification windows and strictly
+qualified unmanaged utilities without application-name matching. The optional
+`xwayland_satellite_overlay_v1` extension sends a requested output name and corner
+on the existing XDG toplevel before mapping. Other hosts retain existing role
+heuristics. The compositor owns safe-area placement, focus, lock isolation and
+held-input retirement.
+
+This is a local integration against the pinned source and EWMH window-type/state
+semantics, not an upstream backport. Package version, revision, notices and all
+other repairs remain unchanged. The patch adds its protocol, server routing and
+X11 classification modules; the ledger records real-client regressions and its
+removal condition. No system Xwayland changes are required by this extension.
+
+## Surface association arrival order
+
+The independent [association patch](../../patches/satellite-surface-association.patch),
+after screen-overlays, pairs X11/Wayland surface serials in either arrival order
+and creates the host role after mapping and association are both ready. It holds
+initial window attachments/callbacks through that boundary using the existing
+configure-wait path, and clears pending content and the role on surface teardown.
+Cursor and subsurface forwarding remains separate.
+
+This is a local repair against the existing pin, not an upstream backport. The
+same one-direction association remains in inspected upstream
+[`79aaba68`](https://github.com/Supreeeme/xwayland-satellite/tree/79aaba68930a674540f7deac8a5dd6106cf15dd7)
+on 2026-11-28. The standard Xwayland shell protocol supplies the serial identity;
+this repair does not add or modify a wire protocol, package version, or pin.
+See the patch ledger for deterministic ordering/buffer tests, limitations, and
+removal requirements. All other patches and notices remain unchanged.

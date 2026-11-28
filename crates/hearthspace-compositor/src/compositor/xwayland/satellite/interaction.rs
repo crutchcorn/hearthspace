@@ -33,7 +33,7 @@ mod protocol {
 
 #[derive(Default)]
 pub(in crate::compositor) struct State {
-    client: Option<ClientId>,
+    pub(super) client: Option<ClientId>,
     pub(super) data_control:
         Option<smithay::wayland::selection::ext_data_control::DataControlState>,
     active: Option<Interaction>,
@@ -56,6 +56,7 @@ impl State {
     ) {
         dh.create_global::<App, XwaylandSatelliteInteractionV1, _>(1, client.clone());
         dh.create_global::<App, super::settings::XwaylandSatelliteSettingsV1, _>(1, client.clone());
+        dh.create_global::<App, super::overlay::XwaylandSatelliteOverlayV1, _>(1, client.clone());
         let authorized = client.clone();
         self.data_control = Some(
             smithay::wayland::selection::ext_data_control::DataControlState::new::<App, _>(

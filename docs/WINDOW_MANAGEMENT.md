@@ -72,6 +72,8 @@ view. Activating another app, canvas search, or the layout editor leaves focused
 view and keeps the previous app maximized on the canvas.
 
 Application-requested fullscreen (such as F11) and Super+F remain separate.
+An X11 window matching a monitor’s dimensions does not itself request
+fullscreen; explicit initial or later fullscreen requests are required.
 Fullscreen uses the entire output at native scale and suppresses server
 decorations. A smaller fullscreen client buffer is centered against an opaque
 black background. Leaving fullscreen returns to the preceding focused or
@@ -90,7 +92,10 @@ runtime and are inherited by directly launched and portal-activated applications
 They do not add unsupported minimize behavior or modify another desktop's settings.
 
 Applications that request compositor decorations receive a 44-logical-pixel
-title bar with maximize/restore and close controls. Each control is 32×32, with
+title bar with maximize/restore and close controls. Its frame follows the current committed
+client geometry, even when an updater or fixed-size dialog is smaller than the
+normal resize-request minimum. Window geometry cannot extend beyond its
+committed surface-tree bounds. Each control is 32×32, with
 a four-pixel gap and six pixels of padding at the right edge. Painting and hit
 testing use the same rectangles; canvas zoom scales both, while output-pinned
 windows retain their native logical size.
@@ -348,6 +353,16 @@ to media controls, hold Fn as well to send an F key. Nested and headless session
 do not switch the host's TTY. Agents can exercise the native binding through an
 owned uinput keyboard; control-socket key injection remains inside Hearthspace.
 See [native TTY testing](VT_TESTING.md) for recovery and lock checks.
+
+## Application overlays
+
+Qualifying X11 notification and unmanaged utility overlays stay in screen space
+instead of moving or scaling with the canvas. They retain their requested output
+and corner, with clearance from mapped frame widgets and other overlays where
+space permits. Mapping or clicking a toast preserves keyboard focus, and overlays are
+hidden while locked. Ordinary app palettes remain canvas windows or parented
+popups. See [Satellite screen overlays](SATELLITE.md#screen-overlays) for the
+metadata policy and placement limits.
 
 ## Agent control
 

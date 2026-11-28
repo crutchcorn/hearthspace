@@ -64,6 +64,9 @@ fn rounded_bounds(rect: Rect) -> Rectangle<i32, Logical> {
 impl App {
     pub(in crate::compositor) fn window_projection(&self, index: usize) -> Projection {
         let base = self.base_window_projection(index);
+        if self.windows[index].kind == ManagedWindowKind::X11Overlay {
+            return base;
+        }
         self.canvas_preview_pose(index)
             .map_or(base, |(pose, opacity)| {
                 base.with_preview(
@@ -75,6 +78,16 @@ impl App {
     }
 
     pub(super) fn base_window_projection(&self, index: usize) -> Projection {
+        if self.windows[index].kind == ManagedWindowKind::X11Overlay {
+            let bounds = self.x11_overlay_rect(index);
+            return Projection {
+                origin: (bounds.loc - self.window_surface_geometry_loc(index)).to_f64(),
+                bounds,
+                scale: 1.,
+                opacity: 1.,
+                preview: None,
+            };
+        }
         let window = &self.windows[index];
         let inset = self.window_surface_geometry_loc(index);
         let chrome = if self.has_compositor_chrome(index) {

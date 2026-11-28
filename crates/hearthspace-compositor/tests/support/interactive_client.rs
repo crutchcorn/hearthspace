@@ -228,6 +228,14 @@ impl InteractiveClient {
         self.sync();
     }
 
+    pub(crate) fn set_raw_window_geometry(&mut self, window: usize, rect: (i32, i32, i32, i32)) {
+        let w = &self.state.windows[window];
+        w.xdg_surface
+            .set_window_geometry(rect.0, rect.1, rect.2, rect.3);
+        w.surface.commit();
+        self.sync();
+    }
+
     pub(crate) fn set_size_limits(&mut self, window: usize, min: (i32, i32), max: (i32, i32)) {
         let window = &self.state.windows[window];
         window.toplevel.set_min_size(min.0, min.1);

@@ -8,7 +8,10 @@ pub(super) fn render_order(kinds: impl IntoIterator<Item = ManagedWindowKind>) -
     for (index, kind) in kinds.into_iter().enumerate() {
         if kind == ManagedWindowKind::DesktopItem {
             desktop.push(index);
-        } else if kind == ManagedWindowKind::ControlOsd {
+        } else if matches!(
+            kind,
+            ManagedWindowKind::ControlOsd | ManagedWindowKind::X11Overlay
+        ) {
             osd.push(index);
         } else if kind.is_shell_chrome() {
             shell.push(index);
