@@ -45,14 +45,14 @@ fn canvas_peek_icon_uses_artwork_at_zoom_and_returns_only_when_its_whole_home_cl
     wait_item(&compositor, item, [252, 300]);
     assert_eq!(geometry(&window(&compositor, id)), [300, 240, 400, 300]);
 
+    // The original home is still covered, but a nearer 32px peek has opened.
+    action(&compositor, format!("move-window {id} 350 240"));
+    wait_item(&compositor, item, [302, 300]);
     // Artwork at home ends at 392, but the full icon/label ends at 408.
+    // Move nearer without putting the label underneath the remaining window.
     action(&compositor, format!("move-window {id} 400 240"));
     client.sync();
-    assert_eq!(
-        item_position(&compositor, item),
-        [252, 300],
-        "clear artwork alone must not restore a still-covered label"
-    );
+    wait_item(&compositor, item, [312, 300]);
     action(&compositor, format!("move-window {id} 800 240"));
     wait_item(&compositor, item, [320, 300]);
 

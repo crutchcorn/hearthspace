@@ -1,6 +1,50 @@
 use super::{tests::*, *};
 
 #[test]
+fn displaced_icon_repeeks_closer_to_home_while_the_home_stays_covered() {
+    let home = icon(1, 100.0, 100.0);
+    let mut scene = Scene {
+        windows: vec![window(2, rect(0.0, 0.0, 400.0, 400.0))],
+        decorations: vec![home],
+        ..Scene::default()
+    };
+    settle_background(&mut scene, None);
+    let far = scene.decorations[0].bounds;
+    scene.windows[0].bounds = rect(100.0, 100.0, 88.0, 96.0);
+    settle_background(&mut scene, None);
+    assert_eq!(position(scene.decorations[0].bounds), point(100.0, 58.0));
+    assert_ne!(scene.decorations[0].bounds, far);
+    assert_eq!(scene.decorations[0].home, Some(position(home.bounds)));
+    let settled = scene.clone();
+    settle_background(&mut scene, None);
+    assert_eq!(scene, settled, "repeated settlement must not drift");
+    scene.windows.clear();
+    settle_background(&mut scene, None);
+    assert_eq!(scene.decorations, [home]);
+}
+
+#[test]
+fn removing_a_blocker_relaxes_existing_peeks_without_moving_new_objects() {
+    let home = icon(1, 100.0, 100.0);
+    let mut scene = Scene {
+        windows: vec![window(2, rect(0.0, 0.0, 400.0, 400.0))],
+        decorations: vec![home],
+        ..Scene::default()
+    };
+    settle_background(&mut scene, None);
+    scene.windows.push(window(3, home.bounds));
+    scene.windows.remove(0);
+    let untouched = icon(4, 110.0, 100.0);
+    scene.decorations.insert(0, untouched);
+    let windows = scene.windows.clone();
+    relax_background(&mut scene);
+    assert_eq!(scene.windows, windows);
+    assert_eq!(scene.decorations[0], untouched);
+    assert_eq!(position(scene.decorations[1].bounds), point(100.0, 58.0));
+    assert_eq!(scene.decorations[1].home, Some(position(home.bounds)));
+}
+
+#[test]
 fn icon_artwork_is_centered_above_the_label() {
     assert_eq!(
         icon_body(rect(100.0, 100.0, 88.0, 96.0)),

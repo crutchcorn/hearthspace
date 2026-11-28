@@ -64,5 +64,6 @@ impl App {
         self.viewport_animation = None;
         self.drag = None;
         self.finish_resize();
+        self.restore_default_canvas_tool();
     }
 }

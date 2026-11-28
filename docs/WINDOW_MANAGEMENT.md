@@ -141,9 +141,11 @@ the translated restore position of a maximized window.
 Desktop icons and free canvas controls expose a 32-pixel patch when covered.
 Icons use their 56-pixel artwork, excluding transparent padding and labels, to
 decide coverage. They remember their first position before automatic displacement
-and return when it becomes clear. A window must clear the complete home bounds,
-including labels, before an icon returns. Moving an icon or control yourself
-establishes a new home. Displaced positions and their homes survive session saves.
+and reconsider their peek from that home when windows move or disappear. An
+already-visible icon moves only when a nearer opening is available. A window
+must clear the complete home bounds, including labels, before an icon returns
+exactly home; an icon may move nearer while keeping its label clear. Moving an
+icon or control yourself establishes a new home. Displaced positions and their homes survive session saves.
 
 Change layout placements make room around the dropped object's footprint.
 Background objects and controls leave ordinary foreground windows fixed. A
@@ -181,6 +183,10 @@ the available output area. Active popup grabs retain input authority; window
 actions return an error until the popup is dismissed.
 
 ## Pan canvas with a mouse
+
+**Select desktop items** is active at login. If focused presentation or input
+recovery cancels a canvas tool, selection becomes the fallback for the next
+desktop drag. Canceled gestures remain canceled until a fresh press.
 
 Hold **❖** and left-drag empty canvas to pan temporarily. Press the modifier
 before the mouse button; your selected canvas tool stays unchanged. The drag

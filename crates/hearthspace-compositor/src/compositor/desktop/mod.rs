@@ -85,6 +85,17 @@ impl App {
         self.desktop.select_mode
     }
 
+    pub(in crate::compositor) fn restore_default_canvas_tool(&mut self) {
+        if self.selected_canvas_tool().is_some() {
+            return;
+        }
+        // Focus callbacks can hold the keyboard mutex. Restore only the tool
+        // state; canceled gestures and their held releases keep their owners.
+        self.desktop.select_mode = true;
+        self.desktop_changed();
+        self.layout_changed();
+    }
+
     pub(in crate::compositor) fn select_desktop_tool(&mut self) {
         self.disarm_canvas_pan();
         self.disarm_canvas_search();

@@ -42,7 +42,7 @@ fn canvas_pan_client_maximize_stops_drag_drains_buttons_and_allows_reselection(
     // that would reject the active grab before exercising presentation entry.
     client.gtk_request_maximized(1, true);
     assert_eq!(window(&compositor, id)["focused_view"], true);
-    assert_eq!(tool(&compositor), Value::Null);
+    assert_eq!(tool(&compositor), "select");
     motion(&compositor, (650., 600.));
     assert_eq!(viewport(&compositor), stopped);
     assert_silent(
@@ -127,7 +127,7 @@ fn canvas_pan_outside_palette_press_drains_when_restored_focus_activates_pending
     assert!(shell.closed().contains(&panel));
     assert_eq!(window(&compositor, id)["focused"], true);
     assert_eq!(window(&compositor, id)["focused_view"], true);
-    assert_eq!(tool(&compositor), Value::Null);
+    assert_eq!(tool(&compositor), "select");
     action(&compositor, "pointer-button-down 273");
     motion(&compositor, (70., 550.));
     finish(&compositor);
