@@ -80,6 +80,16 @@ pub fn settle(scene: &mut Scene, bounds: Option<Rect>) {
 /// drop can adopt the affected resulting positions separately.
 pub fn settle_background(scene: &mut Scene, bounds: Option<Rect>) {
     restore_background(scene);
+    settle_decorations(scene, bounds, true);
+}
+
+/// Reconsider existing peeks after removals without displacing new objects.
+pub fn relax_background(scene: &mut Scene) {
+    restore_background(scene);
+    settle_decorations(scene, None, false);
+}
+
+fn settle_decorations(scene: &mut Scene, bounds: Option<Rect>, allow_new: bool) {
     let mut higher: Vec<Decoration> = Vec::with_capacity(scene.decorations.len());
     for raised in [true, false] {
         let windows = covering_windows(scene, raised);
@@ -96,9 +106,29 @@ pub fn settle_background(scene: &mut Scene, bounds: Option<Rect>) {
                     .filter(|item| !raised || item.raised)
                     .map(|item| item.body),
             );
-            if fully_covered(item.body, &blockers)
-                && let Some(position) =
-                    reveal_position(item.bounds, item.body, &blockers, bounds, DECORATION_PEEK)
+            let covered = fully_covered(item.body, &blockers);
+            let position = if item.home.is_some() || (allow_new && covered) {
+                decoration_position(*item, &blockers, bounds).or_else(|| {
+                    // A lower peer can prevent restoration without occluding
+                    // this layer. Preserve discovery if home-based relaxation
+                    // has no admissible candidate but the current pose is hidden.
+                    covered
+                        .then(|| {
+                            reveal_position(
+                                item.bounds,
+                                item.body,
+                                &blockers,
+                                bounds,
+                                DECORATION_PEEK,
+                            )
+                        })
+                        .flatten()
+                })
+            } else {
+                None
+            };
+            if let Some(position) = position
+                && (covered || closer_to_home(*item, position))
                 && (position.x != item.bounds.x || position.y != item.bounds.y)
             {
                 item.home.get_or_insert(Point {
@@ -110,6 +140,44 @@ pub fn settle_background(scene: &mut Scene, bounds: Option<Rect>) {
             higher.push(*item);
         }
     }
+}
+
+fn decoration_position(item: Decoration, blockers: &[Rect], bounds: Option<Rect>) -> Option<Point> {
+    let origin = item.home.map_or(item, |home| item.at(home));
+    let mut position = reveal_position(
+        origin.bounds,
+        origin.body,
+        blockers,
+        bounds,
+        DECORATION_PEEK,
+    )?;
+    if item.home == Some(position) {
+        // Restoration already rejected this home (e.g. a window still covers
+        // its label). A zero-distance artwork patch must not bypass that rule.
+        // Seek the nearest completely clear tile instead of returning under it.
+        position = reveal_position(
+            origin.bounds,
+            origin.bounds,
+            blockers,
+            bounds,
+            origin.bounds.width.max(origin.bounds.height),
+        )?;
+        if item.home == Some(position) {
+            return None;
+        }
+    }
+    Some(position)
+}
+
+fn closer_to_home(item: Decoration, position: Point) -> bool {
+    item.home.is_some_and(|home| {
+        let distance = |p: Point| (p.x - home.x).powi(2) + (p.y - home.y).powi(2);
+        distance(position) + 0.000_001
+            < distance(Point {
+                x: item.bounds.x,
+                y: item.bounds.y,
+            })
+    })
 }
 
 /// The reference desktop icon's centered 56px artwork, above its 20px label area.

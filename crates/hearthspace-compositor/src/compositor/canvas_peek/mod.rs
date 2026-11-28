@@ -90,7 +90,7 @@ impl App {
                 .iter()
                 .all(|(id, entry)| self.canvas_peek.previous.get(id) == Some(entry));
             if only_removals {
-                canvas_peek::restore_background(&mut scene);
+                canvas_peek::relax_background(&mut scene);
             } else {
                 canvas_peek::settle(&mut scene, None);
             }
