@@ -1,0 +1,341 @@
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -1,3 +1,4 @@
++mod association;
+ mod clientside;
+ mod decoration;
+ mod dispatch;
+@@ -1123,15 +1124,6 @@
+         }
+     }
+
+-    pub fn set_window_serial(&mut self, window: x::Window, serial: [u32; 2]) {
+-        let Some(id) = self.windows.get(&window).copied() else {
+-            warn!("Tried to set serial for unknown window {window:?}");
+-            return;
+-        };
+-
+-        self.world.insert(id, (SurfaceSerial(serial),)).unwrap();
+-    }
+-
+     pub fn can_change_position(&self, window: x::Window) -> bool {
+         let Some(win) = self
+             .windows
+@@ -1224,6 +1216,8 @@
+         };
+
+         win.mapped = true;
++        drop(win);
++        self.create_mapped_window_role(window);
+     }
+
+     pub fn unmap_window(&mut self, window: x::Window) {
+@@ -1506,6 +1500,7 @@
+
+         client.commit();
+         self.world.insert(entity, (role,)).unwrap();
++        let _ = self.world.remove_one::<association::AwaitingWindow>(entity);
+
+         is_toplevel
+     }
+diff --git a/src/server/dispatch.rs b/src/server/dispatch.rs
+--- a/src/server/dispatch.rs
++++ b/src/server/dispatch.rs
+@@ -1,5 +1,5 @@
+ use super::*;
+-use hecs::{CommandBuffer, DynamicBundle};
++use hecs::CommandBuffer;
+ use log::{debug, error, trace, warn};
+ use macros::simple_event_shunt;
+ use std::sync::{Arc, OnceLock};
+@@ -93,7 +93,9 @@
+         let data = state.world.entity(*entity).unwrap();
+         let mut role = data.get::<&mut SurfaceRole>();
+         let xdg = role.as_ref().and_then(|role| role.xdg());
+-        let configured = xdg.is_none_or(|xdg| xdg.configured);
++        let configured = xdg.map_or(!data.has::<association::AwaitingWindow>(), |xdg| {
++            xdg.configured
++        });
+         let client = data.get::<&client::wl_surface::WlSurface>().unwrap();
+
+         let mut cmd = CommandBuffer::new();
+@@ -148,6 +150,7 @@
+
+                 if let Some(role) = role.as_mut() {
+                     role.destroy();
++                    cmd.remove_one::<SurfaceRole>(*entity);
+                 }
+                 client.destroy();
+
+@@ -160,6 +163,15 @@
+                 let (viewport, fractional) = query.get().unwrap();
+                 viewport.destroy();
+
++                if data.has::<association::AwaitingWindow>() {
++                    cmd.remove_one::<association::AwaitingWindow>(*entity);
++                }
++                if data.has::<SurfaceAttach>() {
++                    cmd.remove_one::<SurfaceAttach>(*entity);
++                }
++                if data.has::<WlCallback>() {
++                    cmd.remove_one::<WlCallback>(*entity);
++                }
+                 cmd.remove::<event::SurfaceBundle>(*entity);
+                 if let Some(f) = fractional {
+                     f.destroy();
+@@ -1529,6 +1541,10 @@
+                 }
+
+                 data_init.init(id, e);
++                state
++                    .world
++                    .insert_one(e, association::AwaitingWindow)
++                    .unwrap();
+             }
+             Request::Destroy => {}
+             _ => unreachable!(),
+@@ -1552,40 +1568,7 @@
+                 serial_lo,
+                 serial_hi,
+             } => {
+-                let surface_id = state.world.get::<&WlSurface>(*entity).unwrap().id();
+-                let serial = SurfaceSerial([serial_lo, serial_hi]);
+-                let win_entity = state
+-                    .world
+-                    .query_mut::<&SurfaceSerial>()
+-                    .without::<&WlSurface>()
+-                    .into_iter()
+-                    .find(|(_, surface_serial)| **surface_serial == serial)
+-                    .map(|i| i.0);
+-
+-                if let Some(win_entity) = win_entity {
+-                    let bundle = state.world.take(win_entity).unwrap();
+-                    if !bundle.has::<x::Window>() {
+-                        warn!(
+-                            "Window with same serial ({serial:?}) as {surface_id} has been destroyed?"
+-                        );
+-                        return;
+-                    }
+-                    let mut builder = hecs::EntityBuilder::new();
+-                    builder.add_bundle(bundle);
+-                    state.world.insert(*entity, builder.build()).unwrap();
+-                    state.world.remove_one::<SurfaceSerial>(*entity).unwrap();
+-                    let data = state.world.entity(*entity).unwrap();
+-                    let win = data.get::<&x::Window>().as_deref().copied().unwrap();
+-                    state.windows.insert(win, *entity);
+-                    debug!("associate {surface_id} with {win:?} (serial {serial:?})");
+-                    if data.get::<&WindowData>().unwrap().mapped
+-                        && state.create_role_window(win, *entity)
+-                    {
+-                        state.activate_window(win);
+-                    }
+-                } else {
+-                    state.world.insert(*entity, (serial,)).unwrap();
+-                }
++                state.set_surface_serial(*entity, [serial_lo, serial_hi]);
+             }
+             Request::Destroy => {}
+             _ => unreachable!(),
+diff --git a/src/server/tests.rs b/src/server/tests.rs
+--- a/src/server/tests.rs
++++ b/src/server/tests.rs
+@@ -3396,3 +3396,6 @@
+ /// See Pointer::handle_event for an explanation.
+ #[test]
+ fn popup_pointer_motion_workaround() {}
++
++#[path = "tests/association_order.rs"]
++mod association_order;
+diff --git a/src/server/association.rs b/src/server/association.rs
+new file mode 100644
+--- /dev/null
++++ b/src/server/association.rs
+@@ -0,0 +1,73 @@
++//! Pair the independent X11 and Wayland streams in either arrival order.
++use super::*;
++
++/// Window contents wait for a matching X window, mapping, and XDG configure.
++/// Cursor and subsurface buffers continue through their existing paths.
++pub(super) struct AwaitingWindow;
++
++impl<S: X11Selection + 'static> InnerServerState<S> {
++    pub fn set_window_serial(&mut self, window: x::Window, serial: [u32; 2]) {
++        let Some(entity) = self.windows.get(&window).copied() else {
++            warn!("Tried to set serial for unknown window {window:?}");
++            return;
++        };
++        self.world
++            .insert_one(entity, SurfaceSerial(serial))
++            .unwrap();
++        let surface = self
++            .world
++            .query::<(&SurfaceSerial, &WlSurface)>()
++            .without::<&x::Window>()
++            .iter()
++            .find(|(_, (candidate, _))| candidate.0 == serial)
++            .map(|(e, _)| e);
++        if let Some(surface) = surface {
++            self.associate_window_surface(entity, surface);
++        }
++    }
++
++    pub(super) fn set_surface_serial(&mut self, surface: Entity, serial: [u32; 2]) {
++        self.world
++            .insert_one(surface, SurfaceSerial(serial))
++            .unwrap();
++        let window = self
++            .world
++            .query::<(&SurfaceSerial, &x::Window)>()
++            .without::<&WlSurface>()
++            .iter()
++            .find(|(_, (candidate, _))| candidate.0 == serial)
++            .map(|(e, _)| e);
++        if let Some(window) = window {
++            self.associate_window_surface(window, surface);
++        }
++    }
++
++    fn associate_window_surface(&mut self, window: Entity, surface: Entity) {
++        let bundle = self.world.take(window).unwrap();
++        let mut builder = hecs::EntityBuilder::new();
++        builder.add_bundle(bundle);
++        self.world.insert(surface, builder.build()).unwrap();
++        self.world.remove_one::<SurfaceSerial>(surface).unwrap();
++        let window = *self.world.get::<&x::Window>(surface).unwrap();
++        let id = self.world.get::<&WlSurface>(surface).unwrap().id();
++        self.windows.insert(window, surface);
++        debug!("associate {id} with {window:?}");
++        self.create_mapped_window_role(window);
++    }
++
++    pub(super) fn create_mapped_window_role(&mut self, window: x::Window) {
++        let Some(entity) = self.windows.get(&window).copied() else {
++            return;
++        };
++        let data = self.world.entity(entity).unwrap();
++        if !data.has::<WlSurface>()
++            || data.has::<SurfaceRole>()
++            || !data.get::<&WindowData>().unwrap().mapped
++        {
++            return;
++        }
++        if self.create_role_window(window, entity) {
++            self.activate_window(window);
++        }
++    }
++}
+diff --git a/src/server/tests/association_order.rs b/src/server/tests/association_order.rs
+new file mode 100644
+--- /dev/null
++++ b/src/server/tests/association_order.rs
+@@ -0,0 +1,109 @@
++//! X11 and Wayland use independent streams; neither serial arrival order is guaranteed.
++use super::*;
++
++fn window(f: &mut TestFixture<FakeXConnection>, id: Window) {
++    f.new_window(
++        id,
++        false,
++        WindowData {
++            mapped: false,
++            fullscreen: false,
++            dims: WindowDims {
++                x: 0,
++                y: 0,
++                width: 50,
++                height: 50,
++            },
++        },
++    );
++}
++fn surface(comp: &Compositor, serial: u32) -> (TestObject<WlBuffer>, TestObject<WlSurface>) {
++    let (buffer, _scratch) = comp.create_surface();
++    let surface = TestObject::<WlSurface>::from_request(
++        &comp.compositor.obj,
++        Req::<WlCompositor>::CreateSurface {},
++    );
++    let xwl = TestObject::<XwaylandSurfaceV1>::from_request(
++        &comp.shell.obj,
++        Req::<XwaylandShellV1>::GetXwaylandSurface {
++            surface: surface.obj.clone(),
++        },
++    );
++    xwl.send_request(Req::<XwaylandSurfaceV1>::SetSerial {
++        serial_lo: serial,
++        serial_hi: 0,
++    })
++    .unwrap();
++    surface
++        .send_request(Req::<WlSurface>::Attach {
++            buffer: Some(buffer.obj.clone()),
++            x: 0,
++            y: 0,
++        })
++        .unwrap();
++    surface.send_request(Req::<WlSurface>::Commit {}).unwrap();
++    (buffer, surface)
++}
++fn assert_mapped_buffer(f: &mut TestFixture<FakeXConnection>, id: testwl::SurfaceId) {
++    assert!(
++        matches!(
++            f.testwl.get_surface_data(id).unwrap().role,
++            Some(SurfaceRole::Toplevel(_))
++        ),
++        "paired and mapped window must receive its XDG role"
++    );
++    f.testwl.configure_toplevel(id, 50, 50, Vec::new());
++    f.run();
++    assert!(
++        f.testwl.get_surface_data(id).unwrap().buffer.is_some(),
++        "initial buffer must survive late association and configure"
++    );
++}
++#[test]
++fn wayland_serial_before_x11_serial_maps_and_preserves_initial_buffer() {
++    let (mut f, comp) = TestFixture::new_with_compositor();
++    let id = Window::new(400);
++    window(&mut f, id);
++    f.satellite.map_window(id);
++    let (_buffer, _surface) = surface(&comp, 400);
++    f.run();
++    let host = f.check_new_surface();
++    assert!(f.testwl.get_surface_data(host).unwrap().role.is_none());
++    f.satellite.set_window_serial(id, [400, 0]);
++    f.run();
++    assert_mapped_buffer(&mut f, host);
++}
++#[test]
++fn association_before_map_waits_then_maps_with_initial_buffer() {
++    let (mut f, comp) = TestFixture::new_with_compositor();
++    let id = Window::new(401);
++    window(&mut f, id);
++    f.satellite.set_window_serial(id, [401, 0]);
++    let (_buffer, _surface) = surface(&comp, 401);
++    f.run();
++    let host = f.check_new_surface();
++    assert!(f.testwl.get_surface_data(host).unwrap().role.is_none());
++    f.satellite.map_window(id);
++    f.run();
++    assert_mapped_buffer(&mut f, host);
++}
++#[test]
++fn destroyed_pending_window_cannot_bind_its_surface_to_a_reused_xid() {
++    let (mut f, comp) = TestFixture::new_with_compositor();
++    let id = Window::new(402);
++    window(&mut f, id);
++    f.satellite.map_window(id);
++    let (_buffer, _old) = surface(&comp, 402);
++    f.run();
++    let old_host = f.check_new_surface();
++    f.satellite.destroy_window(id);
++    window(&mut f, id);
++    f.satellite.map_window(id);
++    f.satellite.set_window_serial(id, [403, 0]);
++    let (_buffer, _new) = surface(&comp, 403);
++    f.run();
++    let new_host = f.check_new_surface();
++    assert_ne!(old_host, new_host);
++    assert!(f.testwl.get_surface_data(old_host).unwrap().role.is_none());
++    assert_mapped_buffer(&mut f, new_host);
++}

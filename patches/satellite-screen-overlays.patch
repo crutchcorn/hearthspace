@@ -1,0 +1,426 @@
+diff --git a/src/server/event.rs b/src/server/event.rs
+index e7c2445e..66ce95d4 100644
+--- a/src/server/event.rs
++++ b/src/server/event.rs
+@@ -1078,7 +1078,7 @@ impl Event for client::wl_touch::Event {
+
+ #[derive(Copy, Clone, PartialEq, Eq)]
+ pub(super) struct OnOutput(pub Entity);
+-struct OutputName(String);
++pub(super) struct OutputName(pub(super) String);
+ fn get_output_name(output: Option<&OnOutput>, world: &World) -> Option<String> {
+     output.map(|o| world.get::<&OutputName>(o.0).unwrap().0.clone())
+ }
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+index 38fe17df..ea1aa7bc 100644
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -5,6 +5,7 @@ pub(crate) mod drag;
+ mod event;
+ pub(crate) mod frame_extents;
+ mod interaction;
++mod overlay;
+ mod popup;
+ pub(crate) mod selection;
+ mod settings;
+@@ -496,6 +497,8 @@ pub struct InnerServerState<S: X11Selection> {
+     viewporter: WpViewporter,
+     fractional_scale: Option<WpFractionalScaleManagerV1>,
+     decoration_manager: Option<ZxdgDecorationManagerV1>,
++    overlay_manager:
++        Option<overlay::protocol::xwayland_satellite_overlay_v1::XwaylandSatelliteOverlayV1>,
+     settings_manager:
+         Option<settings::protocol::xwayland_satellite_settings_v1::XwaylandSatelliteSettingsV1>,
+     interaction_manager: Option<
+@@ -526,6 +529,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
+         let (global_list, queue) = registry_queue_init::<MyWorld>(&connection).unwrap();
+         let qh = queue.handle();
+
++        let overlay_manager = global_list.bind(&qh, 1..=1, ()).ok();
+         let interaction_manager = global_list.bind(&qh, 1..=1, ()).ok();
+         let settings_manager = global_list.bind(&qh, 1..=1, ()).ok();
+
+@@ -623,6 +627,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
+             current_scale: 1.0,
+             decoration_manager,
+             interaction_manager,
++            overlay_manager,
+             settings_manager,
+             world,
+         };
+@@ -934,6 +939,10 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+         self.windows.insert(window, id);
+     }
+
++    pub fn supports_overlays(&self) -> bool {
++        self.overlay_manager.is_some()
++    }
++
+     pub fn set_initial_fullscreen(&mut self, window: x::Window, fullscreen: bool) {
+         if let Some(id) = self.windows.get(&window).copied() {
+             self.world
+@@ -1466,7 +1475,8 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+
+             // Output-sized windows are not necessarily fullscreen. In particular,
+             // Steam can map ordinary helper windows at the output dimensions.
+-            fullscreen = window_data.attrs.initial_fullscreen;
++            fullscreen = window_data.attrs.initial_fullscreen
++                && !matches!(window_data.attrs.role, WindowRole::Overlay(..));
+             if fullscreen {
+                 popup_for = None;
+             }
+@@ -1514,6 +1524,19 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
+         );
+
+         let toplevel = xdg.get_toplevel(&self.qh, entity);
++        if let WindowRole::Overlay(corner, output) = window.attrs.role {
++            if let Some(manager) = &self.overlay_manager {
++                let output_name = output
++                    .and_then(|entity| {
++                        self.world
++                            .get::<&event::OutputName>(entity)
++                            .ok()
++                            .map(|name| name.0.clone())
++                    })
++                    .unwrap_or_default();
++                manager.set_overlay(&toplevel, output_name, corner);
++            }
++        }
+         if let Some(hints) = &window.attrs.size_hints {
+             if let Some(min) = &hints.min_size {
+                 toplevel.set_min_size(min.width, min.height);
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+index 8f4c203e..571e1b17 100644
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -1,5 +1,6 @@
+ mod settings;
+ use settings::Settings;
++mod overlay;
+ mod selection;
+ mod size_hints;
+ use selection::{Selection, SelectionState};
+@@ -708,7 +709,9 @@ impl XState {
+             wm_class,
+             wm_normal_hints: size_hints,
+         };
+-        let role = heuristics.guess_window_role(&self.window_atoms);
++        let role = self
++            .screen_overlay_role(server_state, window, &heuristics, &state)?
++            .unwrap_or_else(|| heuristics.guess_window_role(&self.window_atoms));
+         if log::log_enabled!(target: "window_role_heuristics", log::Level::Debug) {
+             debug!(
+                 target: "window_role_heuristics",
+@@ -975,6 +978,9 @@ xcb::atoms_struct! {
+         wm_pid => b"_NET_WM_PID" only_if_exists = false,
+         net_wm_state => b"_NET_WM_STATE" only_if_exists = false,
+         gtk_frame_extents => b"_GTK_FRAME_EXTENTS" only_if_exists = false,
++        wm_above => b"_NET_WM_STATE_ABOVE" only_if_exists = false,
++        wm_skip_taskbar => b"_NET_WM_STATE_SKIP_TASKBAR" only_if_exists = false,
++        wm_skip_pager => b"_NET_WM_STATE_SKIP_PAGER" only_if_exists = false,
+         wm_fullscreen => b"_NET_WM_STATE_FULLSCREEN" only_if_exists = false,
+         wm_maximized_horz => b"_NET_WM_STATE_MAXIMIZED_HORZ" only_if_exists = false,
+         wm_maximized_vert => b"_NET_WM_STATE_MAXIMIZED_VERT" only_if_exists = false,
+@@ -1011,6 +1017,10 @@ xcb::atoms_struct! {
+         dropdown_menu => b"_NET_WM_WINDOW_TYPE_DROPDOWN_MENU" only_if_exists = false,
+         utility => b"_NET_WM_WINDOW_TYPE_UTILITY" only_if_exists = false,
+         tooltip => b"_NET_WM_WINDOW_TYPE_TOOLTIP" only_if_exists = false,
++        desktop => b"_NET_WM_WINDOW_TYPE_DESKTOP" only_if_exists = false,
++        dock => b"_NET_WM_WINDOW_TYPE_DOCK" only_if_exists = false,
++        toolbar => b"_NET_WM_WINDOW_TYPE_TOOLBAR" only_if_exists = false,
++        notification => b"_NET_WM_WINDOW_TYPE_NOTIFICATION" only_if_exists = false,
+         combo => b"_NET_WM_WINDOW_TYPE_COMBO" only_if_exists = false,
+     }
+ }
+@@ -1179,6 +1189,7 @@ pub enum WindowRole {
+     /// A special type of toplevel which is constrained to a fixed size
+     /// Commonly the window which displays while the main application is starting up
+     Splash,
++    Overlay(u32, Option<hecs::Entity>),
+ }
+ impl WindowRole {
+     /// Define a toplevel or popup with no special properties
+diff --git a/src/xstate/tests.rs b/src/xstate/tests.rs
+index d59099c6..a8efa0f6 100644
+--- a/src/xstate/tests.rs
++++ b/src/xstate/tests.rs
+@@ -15,6 +15,10 @@ impl WindowTypes {
+             utility: Atom::new(0x109),
+             tooltip: Atom::new(0x109),
+             combo: Atom::new(0x10a),
++            notification: Atom::new(0x10b),
++            desktop: Atom::new(0x10c),
++            dock: Atom::new(0x10d),
++            toolbar: Atom::new(0x10e),
+         }
+     }
+ }
+diff --git a/src/server/overlay.rs b/src/server/overlay.rs
+new file mode 100644
+index 00000000..7edf83f8
+--- /dev/null
++++ b/src/server/overlay.rs
+@@ -0,0 +1,135 @@
++//! Optional output-space placement for EWMH overlays.
++use super::*;
++use protocol::xwayland_satellite_overlay_v1::XwaylandSatelliteOverlayV1;
++pub(super) mod protocol {
++    #![allow(non_camel_case_types, non_upper_case_globals, unused_imports)]
++    use wayland_client::{self, protocol::*};
++    use wayland_protocols::xdg::shell::client::*;
++    mod __interfaces {
++        use wayland_client::backend as wayland_backend;
++        use wayland_client::protocol::__interfaces::*;
++        use wayland_protocols::xdg::shell::client::__interfaces::*;
++        wayland_scanner::generate_interfaces!("protocols/xwayland-satellite-overlay-v1.xml");
++    }
++    use self::__interfaces::*;
++    wayland_scanner::generate_client_code!("protocols/xwayland-satellite-overlay-v1.xml");
++}
++
++wayland_client::delegate_noop!(MyWorld: XwaylandSatelliteOverlayV1);
++
++struct OutputArea {
++    entity: Entity,
++    x: f64,
++    y: f64,
++    width: f64,
++    height: f64,
++}
++
++impl<S: X11Selection> InnerServerState<S> {
++    pub fn overlay_role(&self, normalized_x: f64, normalized_y: f64) -> WindowRole {
++        let outputs: Vec<_> = self
++            .world
++            .query::<&OutputDimensions>()
++            .iter()
++            .filter(|(_, d)| d.width > 0 && d.height > 0)
++            .map(|(entity, d)| OutputArea {
++                entity,
++                x: f64::from(d.x),
++                y: f64::from(d.y),
++                width: f64::from(d.width),
++                height: f64::from(d.height),
++            })
++            .collect();
++        select_output(&outputs, normalized_x, normalized_y)
++            .map_or(WindowRole::Overlay(3, None), |(corner, entity)| {
++                WindowRole::Overlay(corner, Some(entity))
++            })
++    }
++}
++
++fn select_output(
++    outputs: &[OutputArea],
++    normalized_x: f64,
++    normalized_y: f64,
++) -> Option<(u32, Entity)> {
++    // Satellite exposes a translated/scaled X root. Normalize within its
++    // bounding rectangle, then recover the host output before choosing a corner.
++    let left = outputs.iter().map(|o| o.x).fold(f64::INFINITY, f64::min);
++    let top = outputs.iter().map(|o| o.y).fold(f64::INFINITY, f64::min);
++    let right = outputs
++        .iter()
++        .map(|o| o.x + o.width)
++        .fold(f64::NEG_INFINITY, f64::max);
++    let bottom = outputs
++        .iter()
++        .map(|o| o.y + o.height)
++        .fold(f64::NEG_INFINITY, f64::max);
++    let x = left + normalized_x * (right - left);
++    let y = top + normalized_y * (bottom - top);
++    let distance = |o: &OutputArea| {
++        (x - x.clamp(o.x, o.x + o.width)).powi(2) + (y - y.clamp(o.y, o.y + o.height)).powi(2)
++    };
++    let output = outputs.iter().min_by(|a, b| {
++        distance(a)
++            .total_cmp(&distance(b))
++            .then_with(|| a.entity.to_bits().cmp(&b.entity.to_bits()))
++    })?;
++    let corner = u32::from(x >= output.x + output.width / 2.)
++        | (u32::from(y >= output.y + output.height / 2.) << 1);
++    Some((corner, output.entity))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use hecs::World;
++    #[test]
++    fn translated_output_layout_retains_requested_output_and_corner() {
++        let mut world = World::new();
++        let a = world.spawn(());
++        let b = world.spawn(());
++        let outputs = [
++            OutputArea {
++                entity: a,
++                x: -800.,
++                y: 0.,
++                width: 800.,
++                height: 600.,
++            },
++            OutputArea {
++                entity: b,
++                x: 0.,
++                y: 0.,
++                width: 800.,
++                height: 600.,
++            },
++        ];
++        assert_eq!(select_output(&outputs, 0.875, 0.75), Some((3, b)));
++        assert_eq!(select_output(&outputs, 0.125, 0.25), Some((0, a)));
++    }
++    #[test]
++    fn requests_in_monitor_gaps_and_beyond_root_choose_nearest_output() {
++        let mut world = World::new();
++        let a = world.spawn(());
++        let b = world.spawn(());
++        let outputs = [
++            OutputArea {
++                entity: a,
++                x: 0.,
++                y: 0.,
++                width: 800.,
++                height: 600.,
++            },
++            OutputArea {
++                entity: b,
++                x: 1200.,
++                y: 200.,
++                width: 800.,
++                height: 600.,
++            },
++        ];
++        assert_eq!(select_output(&outputs, 0.55, 0.5), Some((0, b)));
++        assert_eq!(select_output(&outputs, 1.1, 1.1), Some((3, b)));
++        assert_eq!(select_output(&[], 0.5, 0.5), None);
++    }
++}
+diff --git a/src/xstate/overlay.rs b/src/xstate/overlay.rs
+new file mode 100644
+index 00000000..08421a38
+--- /dev/null
++++ b/src/xstate/overlay.rs
+@@ -0,0 +1,79 @@
++//! Generic EWMH overlay classification; titles and classes are not policy inputs.
++use super::*;
++
++impl XState {
++    pub(super) fn screen_overlay_role(
++        &self,
++        server_state: &super::super::RealServerState,
++        window: x::Window,
++        heuristics: &WindowRoleHeuristics,
++        state: &x::GetPropertyReply,
++    ) -> XResult<Option<WindowRole>> {
++        let states = if state.format() == 32 && state.bytes_after() == 0 {
++            state.value::<x::Atom>()
++        } else {
++            &[]
++        };
++        // EWMH window types are ordered by preference; skip only unknown types.
++        let supported = [
++            self.window_atoms.desktop,
++            self.window_atoms.dock,
++            self.window_atoms.toolbar,
++            self.window_atoms.normal,
++            self.window_atoms.dialog,
++            self.window_atoms.drag_n_drop,
++            self.window_atoms.splash,
++            self.window_atoms.menu,
++            self.window_atoms.popup_menu,
++            self.window_atoms.dropdown_menu,
++            self.window_atoms.utility,
++            self.window_atoms.tooltip,
++            self.window_atoms.combo,
++            self.window_atoms.notification,
++        ];
++        let preferred = heuristics
++            .window_types
++            .iter()
++            .find(|atom| supported.contains(atom));
++        let notification = preferred == Some(&self.window_atoms.notification);
++        let utility_overlay = heuristics.override_redirect
++            && !heuristics.has_transient_for
++            && preferred == Some(&self.window_atoms.utility)
++            && [
++                self.atoms.wm_above,
++                self.atoms.wm_skip_taskbar,
++                self.atoms.wm_skip_pager,
++            ]
++            .iter()
++            .all(|atom| states.contains(atom));
++        if server_state.supports_overlays() && (notification || utility_overlay) {
++            let root_geometry = self
++                .connection
++                .wait_for_reply(self.connection.send_request(&x::GetGeometry {
++                    drawable: x::Drawable::Window(self.root),
++                }))?;
++            let dimensions = self
++                .connection
++                .wait_for_reply(self.connection.send_request(&x::GetGeometry {
++                    drawable: x::Drawable::Window(window),
++                }))?;
++            let x = (f64::from(dimensions.x()) + f64::from(dimensions.width()) / 2.)
++                / f64::from(root_geometry.width().max(1));
++            let y = (f64::from(dimensions.y()) + f64::from(dimensions.height()) / 2.)
++                / f64::from(root_geometry.height().max(1));
++            let role = server_state.overlay_role(x, y);
++            debug!(
++                "screen overlay {window:?}: root={}x{}, requested=({}, {}) {}x{}, role={role:?}",
++                root_geometry.width(),
++                root_geometry.height(),
++                dimensions.x(),
++                dimensions.y(),
++                dimensions.width(),
++                dimensions.height()
++            );
++            Ok(Some(role))
++        } else {
++            Ok(None)
++        }
++    }
++}
+diff --git a/protocols/xwayland-satellite-overlay-v1.xml b/protocols/xwayland-satellite-overlay-v1.xml
+new file mode 100644
+index 00000000..462de758
+--- /dev/null
++++ b/protocols/xwayland-satellite-overlay-v1.xml
+@@ -0,0 +1,37 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="xwayland_satellite_overlay_v1">
++  <copyright>
++    Copyright 2026 Hearthspace contributors
++
++    Permission is hereby granted, free of charge, to any person obtaining a
++    copy of this software and associated documentation files (the "Software"),
++    to deal in the Software without restriction, including without limitation
++    the rights to use, copy, modify, merge, publish, distribute, sublicense,
++    and/or sell copies of the Software, and to permit persons to whom the
++    Software is furnished to do so, subject to the following conditions:
++
++    The above copyright notice and this permission notice shall be included
++    in all copies or substantial portions of the Software.
++
++    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
++    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++    DEALINGS IN THE SOFTWARE.
++  </copyright>
++  <interface name="xwayland_satellite_overlay_v1" version="1">
++    <description summary="private X11 screen-overlay metadata">
++      Restricted to the compositor's X11 bridge. Mark an unmapped toplevel as
++      an output-space overlay. The compositor owns placement and focus policy.
++      Application identity is unchanged. No privilege over a session lock is granted.
++    </description>
++    <request name="destroy" type="destructor"/>
++    <request name="set_overlay">
++      <arg name="toplevel" type="object" interface="xdg_toplevel"/>
++      <arg name="output_name" type="string" summary="wl_output name, empty for compositor default"/>
++      <arg name="corner" type="uint" summary="0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right"/>
++    </request>
++  </interface>
++</protocol>

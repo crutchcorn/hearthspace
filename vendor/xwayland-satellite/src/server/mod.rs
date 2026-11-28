@@ -1,3 +1,4 @@
+mod association;
 mod clientside;
 mod decoration;
 mod dispatch;
@@ -5,6 +6,7 @@ pub(crate) mod drag;
 mod event;
 pub(crate) mod frame_extents;
 mod interaction;
+mod overlay;
 mod popup;
 pub(crate) mod selection;
 mod settings;
@@ -496,6 +498,8 @@ pub struct InnerServerState<S: X11Selection> {
     viewporter: WpViewporter,
     fractional_scale: Option<WpFractionalScaleManagerV1>,
     decoration_manager: Option<ZxdgDecorationManagerV1>,
+    overlay_manager:
+        Option<overlay::protocol::xwayland_satellite_overlay_v1::XwaylandSatelliteOverlayV1>,
     settings_manager:
         Option<settings::protocol::xwayland_satellite_settings_v1::XwaylandSatelliteSettingsV1>,
     interaction_manager: Option<
@@ -526,6 +530,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
         let (global_list, queue) = registry_queue_init::<MyWorld>(&connection).unwrap();
         let qh = queue.handle();
 
+        let overlay_manager = global_list.bind(&qh, 1..=1, ()).ok();
         let interaction_manager = global_list.bind(&qh, 1..=1, ()).ok();
         let settings_manager = global_list.bind(&qh, 1..=1, ()).ok();
 
@@ -623,6 +628,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
             current_scale: 1.0,
             decoration_manager,
             interaction_manager,
+            overlay_manager,
             settings_manager,
             world,
         };
@@ -934,6 +940,10 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
         self.windows.insert(window, id);
     }
 
+    pub fn supports_overlays(&self) -> bool {
+        self.overlay_manager.is_some()
+    }
+
     pub fn set_initial_fullscreen(&mut self, window: x::Window, fullscreen: bool) {
         if let Some(id) = self.windows.get(&window).copied() {
             self.world
@@ -1114,15 +1124,6 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
         }
     }
 
-    pub fn set_window_serial(&mut self, window: x::Window, serial: [u32; 2]) {
-        let Some(id) = self.windows.get(&window).copied() else {
-            warn!("Tried to set serial for unknown window {window:?}");
-            return;
-        };
-
-        self.world.insert(id, (SurfaceSerial(serial),)).unwrap();
-    }
-
     pub fn can_change_position(&self, window: x::Window) -> bool {
         let Some(win) = self
             .windows
@@ -1215,6 +1216,8 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
         };
 
         win.mapped = true;
+        drop(win);
+        self.create_mapped_window_role(window);
     }
 
     pub fn unmap_window(&mut self, window: x::Window) {
@@ -1466,7 +1469,8 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
 
             // Output-sized windows are not necessarily fullscreen. In particular,
             // Steam can map ordinary helper windows at the output dimensions.
-            fullscreen = window_data.attrs.initial_fullscreen;
+            fullscreen = window_data.attrs.initial_fullscreen
+                && !matches!(window_data.attrs.role, WindowRole::Overlay(..));
             if fullscreen {
                 popup_for = None;
             }
@@ -1496,6 +1500,7 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
 
         client.commit();
         self.world.insert(entity, (role,)).unwrap();
+        let _ = self.world.remove_one::<association::AwaitingWindow>(entity);
 
         is_toplevel
     }
@@ -1514,6 +1519,19 @@ impl<S: X11Selection + 'static> InnerServerState<S> {
         );
 
         let toplevel = xdg.get_toplevel(&self.qh, entity);
+        if let WindowRole::Overlay(corner, output) = window.attrs.role {
+            if let Some(manager) = &self.overlay_manager {
+                let output_name = output
+                    .and_then(|entity| {
+                        self.world
+                            .get::<&event::OutputName>(entity)
+                            .ok()
+                            .map(|name| name.0.clone())
+                    })
+                    .unwrap_or_default();
+                manager.set_overlay(&toplevel, output_name, corner);
+            }
+        }
         if let Some(hints) = &window.attrs.size_hints {
             if let Some(min) = &hints.min_size {
                 toplevel.set_min_size(min.width, min.height);

@@ -15,6 +15,10 @@ impl WindowTypes {
             utility: Atom::new(0x109),
             tooltip: Atom::new(0x109),
             combo: Atom::new(0x10a),
+            notification: Atom::new(0x10b),
+            desktop: Atom::new(0x10c),
+            dock: Atom::new(0x10d),
+            toolbar: Atom::new(0x10e),
         }
     }
 }

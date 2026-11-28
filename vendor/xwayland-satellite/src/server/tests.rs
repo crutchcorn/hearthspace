@@ -3396,3 +3396,6 @@ fn decorations_max_height_int_max() {
 /// See Pointer::handle_event for an explanation.
 #[test]
 fn popup_pointer_motion_workaround() {}
+
+#[path = "tests/association_order.rs"]
+mod association_order;
