@@ -74,6 +74,10 @@ pub enum ShellCommand {
         app_id: String,
         output_name: String,
     },
+    OpenWirelessSettings {
+        bluetooth: bool,
+        output_name: Option<String>,
+    },
     OpenSearchSettings {
         output_name: Option<String>,
     },
@@ -145,6 +149,20 @@ impl ShellCommand {
                 app_id,
                 output_name,
             } => format!("launch-app-on-output {} {app_id}", hex_encode(output_name)),
+            Self::OpenWirelessSettings {
+                bluetooth,
+                output_name,
+            } => {
+                let command = if *bluetooth {
+                    "open-bluetooth-settings"
+                } else {
+                    "open-wifi-settings"
+                };
+                match output_name {
+                    Some(name) => format!("{command} {}", hex_encode(name)),
+                    None => command.into(),
+                }
+            }
             Self::OpenSearchSettings { output_name } => match output_name {
                 Some(name) => format!("open-search-settings {}", hex_encode(name)),
                 None => "open-search-settings".into(),
@@ -208,6 +226,19 @@ impl ShellCommand {
 
         let parsed = match command {
             "canvas-tool" => Self::CanvasTool(CanvasTool::parse(parts.next()?)?),
+            "open-wifi-settings" | "open-bluetooth-settings" => Self::OpenWirelessSettings {
+                bluetooth: command == "open-bluetooth-settings",
+                output_name: match parts.next() {
+                    Some(encoded) => {
+                        let name = hex_decode_to_string(encoded)?;
+                        if name.is_empty() {
+                            return None;
+                        }
+                        Some(name)
+                    }
+                    None => None,
+                },
+            },
             "open-search-settings" => Self::OpenSearchSettings {
                 output_name: match parts.next() {
                     Some(encoded) => {

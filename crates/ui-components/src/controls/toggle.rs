@@ -90,7 +90,10 @@ where
         mut element: Mut<'_, Self::Element>,
         _: &mut State,
     ) {
-        if self.on != previous.on || self.name != previous.name {
+        if self.on != previous.on
+            || self.name != previous.name
+            || self.disabled != previous.disabled
+        {
             element.widget.inner = Switch::new(self.on);
             element.widget.name = self.name;
             element.ctx.request_render();

@@ -3,7 +3,7 @@
 The default layout places independent native controls in four corners on each output:
 
 - **Top left — Notifications:** one button combines the bell with “All clear” or the number of new notifications and opens the notification panel.
-- **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
+- **Top right — System tray:** application tray icons, clock/calendar, Wi-Fi, Bluetooth, brightness, sound, battery when available, and Power. Tray icons appear only while apps publish them; see [application tray](TRAY.md).
 - **Bottom left — Canvas tools:** a chooser for [desktop-item selection](DESKTOP_ITEMS.md), [Pan canvas](WINDOW_MANAGEMENT.md#pan-canvas-with-a-mouse), and [canvas search](CANVAS_SEARCH.md), followed by window-group selection, Change layout, and the [canvas map](CANVAS_MAP.md).
 - **Bottom right — App dock and Apps List:** favorite and running apps, plus the installed-app browser.
 
@@ -78,8 +78,9 @@ native session service. See [power handling](POWER.md).
 Pinch gestures and Alt+Tab open the window switcher. Settings, Lock and Log
 out are reached through Apps List and Power rather than standalone corner buttons.
 
-Wi-Fi directs you to a network tray application. Hearthspace does not currently
-provide its own network scanning or connection controls.
+[Wi-Fi and Bluetooth](WIRELESS.md) open real NetworkManager and BlueZ controls
+for radio power, discovery, connections, and pairing. They share their controls
+with Settings and the Shared Controls Storybook.
 [Brightness and Sound](AUDIO_AND_BRIGHTNESS.md) open separate slider dropdowns
 using the existing hardware readings. Battery details appear in the Battery
 dropdown. Missing hardware has an explicit unavailable state. The clock dropdown
@@ -110,7 +111,7 @@ Open **Change layout** from Canvas tools, canvas Search, or Settings → System.
 Select a control, desktop item, window, or group, then use its editor to choose
 Background, Canvas, or Frame. Background and Canvas move as you pan; Background
 is the lower canvas layer. Icons and controls on either remain beneath ordinary
-windows. Frame stays attached to an output edge. Wi-Fi, clock, sound, brightness, battery,
+windows. Frame stays attached to an output edge. Wi-Fi, Bluetooth, clock, sound, brightness, battery,
 application tray and power can be separated from the default system group.
 Canvas tools and the app dock remain composite controls.
 
@@ -164,7 +165,7 @@ it. Permanent transport or invalid-snapshot failures cancel it immediately.
 ## Agent control
 
 Buttons retain descriptive accessible names despite showing icons: `Apps List`,
-`Notifications`, `Search canvas`, `Canvas map`, `Select window group`, `Wi-Fi settings`,
+`Notifications`, `Search canvas`, `Canvas map`, `Select window group`, `Wi-Fi settings`, `Bluetooth settings`,
 `Brightness settings`, `Sound settings`, `Date and time`, and `Power`.
 Close controls include `Close apps list`, `Close notifications`,
 and `Close power menu`. Dock names include the app, window count, active state,

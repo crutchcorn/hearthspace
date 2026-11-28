@@ -192,7 +192,7 @@ fn output_watcher_view(map_open: bool, osd_open: bool) -> impl WidgetView<ShellS
                 fork(
                     super::tray_task::task(),
                     fork(
-                        super::control_task::task(),
+                        fork(super::control_task::task(), super::wireless::task()),
                         osd_open.then(super::control_osd::task),
                     ),
                 ),

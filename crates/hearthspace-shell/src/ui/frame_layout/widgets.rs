@@ -52,7 +52,11 @@ pub(super) fn size(
             super::text_metrics::width(&notification_text(state), 13.0) + 49.0
         }
         "clock" if expanded => (super::text_metrics::width(&clock(format), 14.0) + 24.0).max(70.0),
-        "wifi" if expanded => (super::text_metrics::width("Wi-Fi", 11.0) + 43.0).max(44.0),
+        "wifi" | "bluetooth" if expanded => {
+            (super::text_metrics::width(if id == "wifi" { "Wi-Fi" } else { "Bluetooth" }, 11.0)
+                + 43.0)
+                .max(44.0)
+        }
         "volume" | "brightness" | "battery" if expanded => {
             let percentage = match id {
                 "volume" => state.controls.volume(),
@@ -120,8 +124,34 @@ pub(super) fn content(
             output.show_controls && output.quick_panel == Kind::Clock,
             Some(Kind::Clock),
         ),
+        "bluetooth" => (
+            Icon::Bluetooth,
+            "Bluetooth settings".into(),
+            Some("Bluetooth".into()),
+            output.show_controls && output.quick_panel == Kind::Bluetooth,
+            Some(Kind::Bluetooth),
+        ),
         "wifi" => (
-            Icon::Wifi,
+            state
+                .wireless
+                .snapshot
+                .wifi
+                .as_ref()
+                .ok()
+                .map_or(Icon::Wifi, |radio| {
+                    if !radio.enabled {
+                        Icon::WifiOff
+                    } else {
+                        radio
+                            .items
+                            .iter()
+                            .find(|item| item.connected)
+                            .and_then(|item| item.strength)
+                            .map_or(Icon::WifiSignal { strength: 0 }, |strength| {
+                                Icon::WifiSignal { strength }
+                            })
+                    }
+                }),
             "Wi-Fi settings".into(),
             Some("Wi-Fi".into()),
             output.show_controls && output.quick_panel == Kind::Wifi,

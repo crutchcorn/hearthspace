@@ -160,7 +160,11 @@ impl App {
         self.settings_page_reply(output, "background")
     }
 
-    fn settings_page_reply(&mut self, output: Option<&str>, page: &str) -> ControlReply {
+    pub(in crate::compositor::shell_integration) fn settings_page_reply(
+        &mut self,
+        output: Option<&str>,
+        page: &str,
+    ) -> ControlReply {
         self.launch_app_with_arguments(
             SETTINGS,
             output,

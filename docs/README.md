@@ -18,6 +18,7 @@ maintained behavior. The [roadmap](ROADMAP.md) covers remaining work;
 - [Session locking](SESSION_LOCK.md)
 - [Power, battery, and wake recovery](POWER.md)
 - [Audio and brightness](AUDIO_AND_BRIGHTNESS.md)
+- [Wi-Fi and Bluetooth](WIRELESS.md)
 - [Clipboard](CLIPBOARD.md)
 - [Remote desktop](REMOTE_DESKTOP.md)
 - [Screen and window sharing](SCREEN_SHARING.md)

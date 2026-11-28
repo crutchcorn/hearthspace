@@ -77,6 +77,7 @@ fn command_timeout(command: &str) -> Duration {
             crate::ShellCommand::LaunchApp(_)
                 | crate::ShellCommand::LaunchAppOnOutput { .. }
                 | crate::ShellCommand::OpenSearchSettings { .. }
+                | crate::ShellCommand::OpenWirelessSettings { .. }
         )
     ) || command.starts_with("favorite-gesture-launch ")
         || command.starts_with("desktop-context-background ");

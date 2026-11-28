@@ -21,6 +21,12 @@ pub(super) const ENTRIES: &[Entry] = &[
         icon: Icon::Wifi,
     },
     Entry {
+        id: "control:bluetooth",
+        title: "Bluetooth",
+        keywords: "bluetooth wireless headphones pairing devices",
+        icon: Icon::Bluetooth,
+    },
+    Entry {
         id: "control:volume",
         title: "Sound",
         keywords: "volume audio mute speaker output",

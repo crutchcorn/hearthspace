@@ -4,7 +4,7 @@ use crate::state::SettingsCategory;
 
 pub(crate) const USAGE: &str = "Usage: hearthspace-settings [--page PAGE | --category PAGE]
 
-Pages: appearance (default), displays, background, gestures, shortcuts, ai, system
+Pages: appearance (default), displays, background, wifi, bluetooth, gestures, shortcuts, ai, system
 Aliases: display, search, advanced
 Options: --help, -h";
 
@@ -49,6 +49,8 @@ pub(crate) fn parse_page(page: &str) -> Result<SettingsCategory, String> {
         "display" | "displays" => Ok(SettingsCategory::Displays),
         "appearance" => Ok(SettingsCategory::Appearance),
         "background" => Ok(SettingsCategory::Background),
+        "wifi" | "wi-fi" => Ok(SettingsCategory::Wifi),
+        "bluetooth" => Ok(SettingsCategory::Bluetooth),
         "search" | "gestures" => Ok(SettingsCategory::Gestures),
         "shortcuts" | "keyboard-shortcuts" | "keyboard shortcuts" => {
             Ok(SettingsCategory::KeyboardShortcuts)
@@ -81,6 +83,8 @@ mod tests {
             ("display", SettingsCategory::Displays),
             ("displays", SettingsCategory::Displays),
             ("background", SettingsCategory::Background),
+            ("wifi", SettingsCategory::Wifi),
+            ("bluetooth", SettingsCategory::Bluetooth),
             ("appearance", SettingsCategory::Appearance),
             ("search", SettingsCategory::Gestures),
             ("gestures", SettingsCategory::Gestures),

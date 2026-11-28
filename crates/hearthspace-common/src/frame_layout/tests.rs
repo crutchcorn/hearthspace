@@ -35,11 +35,17 @@ fn separate_move_and_regroup_preserves_members_and_destination_order() {
         layout.placement(&wifi).canvas_bounds(),
         Some((Some(500.0), Some(200.0), Some(120.0), Some(54.0)))
     );
+    let mut expected = layout.groups["system"].members.clone();
+    let volume = expected
+        .iter()
+        .position(|member| member.id == "volume")
+        .unwrap();
+    expected.insert(volume, wifi.clone());
     let group = layout
         .merge(&wifi, &LayoutTarget::widget("volume"), true)
         .unwrap();
     assert_eq!(group.id, "system");
-    assert_eq!(layout.groups["system"].members[1], wifi);
+    assert_eq!(layout.groups["system"].members, expected);
     assert_eq!(
         layout.placement(&wifi),
         ObjectPlacement::frame(FrameEdge::Top, 1.0)

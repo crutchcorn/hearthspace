@@ -107,6 +107,19 @@ pub(super) fn stories() -> Vec<Story> {
             ));
         }
     }
+    for kind in ["wifi", "bluetooth"] {
+        stories.push(Story::new(
+            format!("shared-controls-radio--{kind}"),
+            format!("Radio / {kind}"),
+            "Production radio controls; sample devices, no system service access",
+            vec![
+                Control::bool("checked", "Enabled", true),
+                Control::bool("disabled", "Busy", false),
+                Control::bool("compact", "Tray connections", false),
+                Control::text("details", "Selected device", ""),
+            ],
+        ));
+    }
     stories
 }
 fn title(s: &str) -> String {
@@ -144,10 +157,15 @@ pub(super) fn theme_controls(state: &AppState) -> impl WidgetView<AppState> + us
     .gap(12.0.px())
 }
 
+mod radio;
+
 pub(super) fn preview(state: &AppState) -> Box<AnyWidgetView<AppState>> {
     let id = state.selected_story().id();
     let disabled = state.selected_bool("disabled").unwrap_or(false);
     let p = state.palette();
+    if id.starts_with("shared-controls-radio--") {
+        return radio::preview(state);
+    }
     let content: Box<AnyWidgetView<AppState>> = if id.starts_with("shared-controls-button") {
         let variant = if id.ends_with("primary") || id.ends_with("disabled") {
             ButtonVariant::Primary

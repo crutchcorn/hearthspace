@@ -11,6 +11,8 @@ Open **Hearthspace Settings** from Apps List to adjust the desktop:
   canvas tiles and moves the photo; Stretch fills the output, Contain shows the
   whole image, and Cover fills it while cropping. The latter three stay still
   while the canvas moves. A photo does not change window positions or grid snapping.
+- **Wi-Fi:** connect to networks and manage saved connections.
+- **Bluetooth:** pair and connect peripherals. See [wireless controls](WIRELESS.md).
 - **Gestures:** record [drawn app shortcuts](FAVORITE_APPS.md).
 - **Keyboard shortcuts:** look up the fixed canvas-tool bindings and pointer gestures.
 - **AI:** explicitly enable or remove the local model for

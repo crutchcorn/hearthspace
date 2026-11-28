@@ -26,6 +26,7 @@ mod control_state;
 mod control_task;
 mod control_worker;
 mod corner_button;
+mod wireless;
 // Legacy compositions remain fixtures for their shared controls' regressions.
 #[cfg(test)]
 mod corners;

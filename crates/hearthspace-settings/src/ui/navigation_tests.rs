@@ -156,6 +156,8 @@ fn keyboard_category_order_and_boundaries_remain_native_without_a_focus_trap() {
         "Appearance",
         "Displays",
         "Background",
+        "Wi-Fi",
+        "Bluetooth",
         "Gestures",
         "Keyboard shortcuts",
         "AI",
@@ -340,19 +342,22 @@ fn short_overlay_scrolls_without_selecting_a_category_during_touch_drag() {
     let navigation = role(&ui, Role::Navigation).unwrap();
     assert_eq!(bounds(&ui, navigation), Rect::new(0.0, 49.0, 400.0, 220.0));
     let before = bounds(&ui, ui.button("System"));
-    for (kind, y) in [
-        ("down", 185.0),
-        ("move", 150.0),
-        ("move", 100.0),
-        ("move", 60.0),
-        ("move", 25.0),
-        ("up", 25.0),
-    ] {
-        ui.harness.process_pointer_event(touch(kind, 200.0, y));
+    // The added wireless pages require two real swipes in this short viewport.
+    for _ in 0..2 {
+        for (kind, y) in [
+            ("down", 185.0),
+            ("move", 150.0),
+            ("move", 100.0),
+            ("move", 60.0),
+            ("move", 25.0),
+            ("up", 25.0),
+        ] {
+            ui.harness.process_pointer_event(touch(kind, 200.0, y));
+        }
+        ui.dispatch(&view);
+        assert!(ui.state.navigation.open);
+        assert_eq!(ui.state.selected_category, SettingsCategory::Appearance);
     }
-    ui.dispatch(&view);
-    assert!(ui.state.navigation.open);
-    assert_eq!(ui.state.selected_category, SettingsCategory::Appearance);
     let after = bounds(&ui, ui.button("System"));
     assert!(
         after.y0 < before.y0,

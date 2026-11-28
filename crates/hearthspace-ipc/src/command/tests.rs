@@ -235,3 +235,23 @@ fn waydriver_input_commands_parse() {
     );
     assert_eq!(ShellCommand::parse("quit"), Some(ShellCommand::Quit));
 }
+
+#[test]
+fn wireless_settings_links_round_trip_output_and_reject_extra_arguments() {
+    for bluetooth in [false, true] {
+        for output_name in [None, Some("DP 1/é".to_owned())] {
+            let command = ShellCommand::OpenWirelessSettings {
+                bluetooth,
+                output_name,
+            };
+            assert_eq!(ShellCommand::parse(&command.wire_name()), Some(command));
+        }
+    }
+    for invalid in [
+        "open-wifi-settings 00 extra",
+        "open-bluetooth-settings nope",
+        "open-wifi-settings 41 42",
+    ] {
+        assert!(ShellCommand::parse(invalid).is_none(), "{invalid}");
+    }
+}
