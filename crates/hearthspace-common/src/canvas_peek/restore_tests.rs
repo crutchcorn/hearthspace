@@ -20,7 +20,7 @@ fn repeated_peeks_keep_the_first_home_and_restore_both_body_and_bounds() {
 }
 
 #[test]
-fn a_window_covering_only_the_home_label_prevents_return() {
+fn a_covered_home_label_allows_a_nearer_position_but_not_exact_return() {
     let mut scene = Scene {
         windows: vec![window(1, rect(100.0, 100.0, 200.0, 200.0))],
         decorations: vec![icon(2, 100.0, 100.0)],
@@ -32,7 +32,9 @@ fn a_window_covering_only_the_home_label_prevents_return() {
     restore_background(&mut scene);
     assert_eq!(scene, displaced);
     settle(&mut scene, world());
-    assert_eq!(scene, displaced);
+    assert_eq!(position(scene.decorations[0].bounds), point(100.0, 99.0));
+    assert_eq!(scene.decorations[0].home, Some(point(100.0, 100.0)));
+    assert!(geometry::intersect(scene.decorations[0].bounds, scene.windows[0].bounds).is_none());
 }
 
 #[test]
@@ -47,7 +49,9 @@ fn nearby_icon_padding_does_not_prevent_a_return_after_repeated_peeks() {
     assert_eq!(scene.decorations[0].bounds.y, 58.0);
     scene.windows.push(window(4, rect(100.0, 58.0, 88.0, 96.0)));
     settle(&mut scene, world());
-    assert_eq!(scene.decorations[0].bounds.y, 16.0);
+    // The nearest opening is now beside both windows, not farther above the
+    // previous temporary position. Both horizontal openings are 48px from home.
+    assert_eq!(position(scene.decorations[0].bounds), point(52.0, 100.0));
     assert_eq!(scene.decorations[0].home, Some(point(100.0, 100.0)));
     scene.windows.clear();
     settle(&mut scene, world());
@@ -140,7 +144,7 @@ fn a_stationary_icon_blocks_every_dependent_return_in_a_cycle() {
 }
 
 #[test]
-fn conflicting_homes_resolve_deterministically_without_overlap_or_oscillation() {
+fn conflicting_homes_repeek_deterministically_without_oscillation() {
     let lower = Decoration {
         home: Some(point(100.0, 100.0)),
         ..icon(1, 300.0, 100.0)
@@ -159,7 +163,12 @@ fn conflicting_homes_resolve_deterministically_without_overlap_or_oscillation() 
     assert_eq!(scene.decorations, [lower, icon(2, 100.0, 100.0)]);
     let restored = scene.clone();
     settle(&mut scene, world());
-    assert_eq!(scene, restored);
+    assert_eq!(scene.decorations[1], restored.decorations[1]);
+    assert_eq!(position(scene.decorations[0].bounds), point(100.0, 68.0));
+    assert_eq!(scene.decorations[0].home, lower.home);
+    let settled = scene.clone();
+    settle(&mut scene, world());
+    assert_eq!(scene, settled);
 }
 
 #[test]
