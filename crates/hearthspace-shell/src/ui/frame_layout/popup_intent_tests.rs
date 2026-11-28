@@ -10,6 +10,42 @@ struct Fixture {
     snapshot: Snapshot,
 }
 
+#[test]
+fn duplicate_widget_popup_anchors_to_the_activated_copy() {
+    let mut fixture = Fixture::new();
+    fixture.state.frame_layout.activation_origin = Some(hearthspace_ipc::frame_layout::Selection {
+        output: "eDP-1".into(),
+        target: hearthspace_common::frame_layout::LayoutTarget::widget("notification-copy-2"),
+    });
+    fixture.state.toggle_notifications("eDP-1");
+    let request = fixture.requests.try_recv().unwrap();
+    let anchor: serde_json::Value =
+        serde_json::from_str(request.command.strip_prefix("frame-popup-anchor ").unwrap()).unwrap();
+    assert_eq!(anchor["target"]["id"], "notification-copy-2");
+}
+
+#[test]
+fn removed_widget_cannot_open_a_popup_after_another_copy_is_added() {
+    let mut fixture = Fixture::new();
+    fixture.snapshot.outputs[0]
+        .widgets
+        .push(hearthspace_ipc::frame_layout::Widget {
+            id: "notification-copy-1".into(),
+            ..Default::default()
+        });
+    frame_layout::apply(&mut fixture.state, fixture.snapshot.clone());
+    fixture.state.frame_layout.activation_origin = Some(hearthspace_ipc::frame_layout::Selection {
+        output: "eDP-1".into(),
+        target: hearthspace_common::frame_layout::LayoutTarget::widget("notification-copy-1"),
+    });
+    let now = Instant::now();
+    let opening = fixture.notification(now);
+    fixture.snapshot.outputs[0].widgets[0].id = "notification-copy-2".into();
+    frame_layout::apply(&mut fixture.state, fixture.snapshot.clone());
+    opening.deliver(&mut fixture.state, now);
+    assert!(!fixture.state.outputs[0].show_notifications);
+}
+
 impl Fixture {
     fn new() -> Self {
         let mut state = ShellState::new("/unused".into(), vec!["eDP-1".into(), "HDMI-A-1".into()]);
@@ -267,4 +303,43 @@ fn accepted_launcher_token_is_preserved_but_new_query_cancels_old_open() {
     old.deliver(&mut fixture.state, now);
     assert_eq!(fixture.state.outputs[0].query, "newer query");
     assert_eq!(fixture.state.outputs[0].search_request_token, None);
+}
+
+#[test]
+fn activating_another_copy_replaces_the_opening_instead_of_reversing_it() {
+    let mut fixture = Fixture::new();
+    fixture.snapshot.outputs[0].widgets = ["copy-1", "copy-2"]
+        .into_iter()
+        .map(|id| hearthspace_ipc::frame_layout::Widget {
+            id: id.into(),
+            ..Default::default()
+        })
+        .collect();
+    frame_layout::apply(&mut fixture.state, fixture.snapshot.clone());
+    let origin = |id| hearthspace_ipc::frame_layout::Selection {
+        output: "eDP-1".into(),
+        target: hearthspace_common::frame_layout::LayoutTarget::widget(id),
+    };
+    fixture.state.frame_layout.activation_origin = Some(origin("copy-1"));
+    let now = Instant::now();
+    let first = fixture.notification(now);
+    fixture.state.frame_layout.activation_origin = Some(origin("copy-2"));
+    let second = fixture.notification(now);
+    first.deliver(&mut fixture.state, now);
+    assert!(!fixture.state.outputs[0].show_notifications);
+    second.deliver(&mut fixture.state, now);
+    assert!(fixture.state.outputs[0].show_notifications);
+    assert_eq!(
+        fixture.state.frame_layout.popup_origin,
+        Some(origin("copy-2"))
+    );
+
+    fixture.state.frame_layout.activation_origin = Some(origin("copy-1"));
+    let third = fixture.notification(now);
+    third.deliver(&mut fixture.state, now);
+    assert!(fixture.state.outputs[0].show_notifications);
+    assert_eq!(
+        fixture.state.frame_layout.popup_origin,
+        Some(origin("copy-1"))
+    );
 }

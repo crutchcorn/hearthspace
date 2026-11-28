@@ -1,11 +1,12 @@
 use super::*;
+use crate::frame_widgets;
 
 fn widget(state: &Value, id: &str) -> Value {
     state["outputs"][0]["widgets"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == id)
+        .find(|widget| widget["kind"] == id)
         .unwrap()
         .clone()
 }
@@ -22,13 +23,13 @@ fn frame_layout_expanded_controls_keep_native_width_and_canvas_preserves_screen_
         .to_owned();
     let mut client = connect(&compositor);
     client.add(
-        hearthspace_common::frame_layout::frame_widget_app_id(Some(&output), "clock"),
+        frame_widgets::app_id(&compositor, Some(&output), "clock"),
         (94, 44),
         (0, 0),
         COLOR,
     );
     let wifi = client.add(
-        hearthspace_common::frame_layout::frame_widget_app_id(Some(&output), "wifi"),
+        frame_widgets::app_id(&compositor, Some(&output), "wifi"),
         (100, 44),
         (0, 0),
         COLOR,
@@ -47,7 +48,7 @@ fn frame_layout_expanded_controls_keep_native_width_and_canvas_preserves_screen_
     command(
         &compositor,
         "place",
-        json!({"kind":"widget","id":"wifi"}),
+        frame_widgets::target(&compositor, "wifi"),
         json!({"surface":"frame","edge":"right","position":0.7}),
     );
     client.repaint_with_size(wifi, (110, 54));
@@ -57,7 +58,7 @@ fn frame_layout_expanded_controls_keep_native_width_and_canvas_preserves_screen_
     command(
         &compositor,
         "place",
-        json!({"kind":"widget","id":"wifi"}),
+        frame_widgets::target(&compositor, "wifi"),
         json!({"surface":"canvas"}),
     );
     let canvas = widget(&layout(&compositor), "wifi")["rect"].clone();

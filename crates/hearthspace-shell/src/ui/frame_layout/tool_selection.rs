@@ -23,6 +23,7 @@ pub(super) fn choose(state: &mut ShellState, output: &str, tool: CanvasTool) {
             output.into(),
             Popup::Quick(Kind::Tools),
             state.frame_layout.popup_epoch,
+            None,
         ),
         tool,
     };

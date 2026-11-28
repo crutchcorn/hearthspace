@@ -235,21 +235,31 @@ mod tests {
         let socket = directory.path().join("control.sock");
         assert!(!register(socket.clone()).await);
         let listener = UnixListener::bind(&socket).unwrap();
+        let total = controls::registration().len();
         let server = std::thread::spawn(move || {
-            for (expected_offset, reply) in [
-                (0, "ok\n"),
-                (12, "err unavailable\n"),
-                (0, "ok\n"),
-                (12, "ok\n"),
-            ] {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut line = String::new();
-                BufReader::new(&stream).read_line(&mut line).unwrap();
-                let (name, payload) = line.split_once(' ').unwrap();
-                assert_eq!(name, "canvas-search-register");
-                let value: serde_json::Value = serde_json::from_str(payload).unwrap();
-                assert_eq!(value["offset"], expected_offset);
-                stream.write_all(reply.as_bytes()).unwrap();
+            for reject_second_batch in [true, false] {
+                let mut offset = 0;
+                loop {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut line = String::new();
+                    BufReader::new(&stream).read_line(&mut line).unwrap();
+                    let (name, payload) = line.split_once(' ').unwrap();
+                    assert_eq!(name, "canvas-search-register");
+                    let value: serde_json::Value = serde_json::from_str(payload).unwrap();
+                    assert_eq!(value["offset"], offset);
+                    let count = value["entries"].as_array().unwrap().len();
+                    assert!(count > 0);
+                    if reject_second_batch && offset > 0 {
+                        stream.write_all(b"err unavailable\n").unwrap();
+                        break;
+                    }
+                    stream.write_all(b"ok\n").unwrap();
+                    offset += count;
+                    if offset == total {
+                        break;
+                    }
+                    assert!(offset < total);
+                }
             }
         });
         assert!(!register(socket.clone()).await);

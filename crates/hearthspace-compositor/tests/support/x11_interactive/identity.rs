@@ -1,5 +1,6 @@
 //! XRes credentials supply identity when bootstrap clients omit WM_CLASS.
 use super::*;
+use crate::frame_widgets;
 use smithay::reexports::x11rb::{
     protocol::xproto::{AtomEnum, ConnectionExt, PropMode},
     wrapper::ConnectionExt as _,
@@ -54,8 +55,6 @@ fn x11_bootstrap_identity_uses_client_process_then_follows_wm_class() {
 
 #[test]
 fn x11_cached_frame_syntax_follows_current_class_instance_and_executable_fallback() {
-    use hearthspace_common::frame_layout::frame_widget_app_id;
-
     let _guard = headless_test_guard();
     let mut compositor = HeadlessCompositor::spawn_with_size("1280x800");
     drop(compositor.wait_for_socket());
@@ -66,8 +65,8 @@ fn x11_cached_frame_syntax_follows_current_class_instance_and_executable_fallbac
         .as_str()
         .unwrap()
         .to_owned();
-    let wifi = frame_widget_app_id(Some(&output), "wifi");
-    let clock = frame_widget_app_id(Some(&output), "clock");
+    let wifi = frame_widgets::app_id(&compositor, Some(&output), "wifi");
+    let clock = frame_widgets::app_id(&compositor, Some(&output), "clock");
 
     for (instance, class, target) in [
         (wifi.as_str(), clock.as_str(), Some("clock")),
@@ -98,9 +97,9 @@ fn x11_cached_frame_syntax_follows_current_class_instance_and_executable_fallbac
                     .as_array()
                     .unwrap()
                     .iter()
-                    .find(|widget| widget["id"] == target)
+                    .find(|widget| widget["kind"] == target)
                     .unwrap();
-                window["app_id"] == frame_widget_app_id(Some(&output), target)
+                window["app_id"] == frame_widgets::app_id(&compositor, Some(&output), target)
                     && window["x"].as_f64().unwrap()
                         == widget["rect"]["x"].as_f64().unwrap().round()
                     && window["y"].as_f64().unwrap()

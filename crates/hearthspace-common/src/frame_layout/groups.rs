@@ -31,10 +31,13 @@ impl FrameLayout {
         }
     }
 
-    /// Placement changes always separate a member first. Removing a group hides its widgets
+    /// Placement changes always separate a member first. Removing a group retires its widgets
     /// and returns non-widget members to their ordinary canvas/background layer.
     pub fn set_placement(&mut self, target: &LayoutTarget, mut placement: ObjectPlacement) {
-        if !target.valid() || !placement.valid() {
+        if !target.valid()
+            || !placement.valid()
+            || (target.kind == TargetKind::Widget && self.widget_kind(&target.id).is_none())
+        {
             return;
         }
         if placement == ObjectPlacement::Hidden {
@@ -53,10 +56,17 @@ impl FrameLayout {
                 }
                 return;
             }
-            if target.kind != TargetKind::Widget || (target.id == "tools" && !self.allow_hide_tools)
+            if target.kind != TargetKind::Widget {
+                return;
+            }
+            if self.widget_kind(&target.id) == Some("tools")
+                && self.placement(target).is_frame()
+                && !self.allow_hide_tools
             {
                 return;
             }
+            let _ = self.remove_widget(&target.id);
+            return;
         }
         if target.kind == TargetKind::Group && !self.groups.contains_key(&target.id) {
             return;

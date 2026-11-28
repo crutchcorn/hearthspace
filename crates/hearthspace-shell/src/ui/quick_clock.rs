@@ -29,7 +29,12 @@ fn selected(state: &ShellState, output: &str) -> ClockDateFormat {
         .outputs
         .iter()
         .find(|item| item.output == output)
-        .map_or(ClockDateFormat::None, |item| item.layout.clock_date_format)
+        .map_or(ClockDateFormat::None, |item| {
+            super::frame_layout::popup_widget(state, output, "clock")
+                .map_or(item.layout.clock_date_format, |id| {
+                    item.layout.widget_clock_date_format(&id)
+                })
+        })
 }
 
 pub(super) fn size(
@@ -91,6 +96,7 @@ fn choose(state: &mut ShellState, key: &str, format: ClockDateFormat) {
             "frame-clock-format {}",
             serde_json::to_string(&hearthspace_ipc::frame_layout::ClockFormat {
                 output: key.into(),
+                id: super::frame_layout::popup_widget(state, key, "clock"),
                 value: format
             })
             .unwrap()

@@ -60,14 +60,28 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
     if state.frame_layout.opening_popup || !state.frame_layout.visible {
         return false;
     }
+    let origin = state
+        .frame_layout
+        .activation_origin
+        .as_ref()
+        .filter(|origin| origin.output == key)
+        .cloned();
     let Some(output) = state.outputs.iter().find(|output| output.key() == key) else {
         return false;
     };
     // Closing never needs an anchor. Apply it synchronously, so a following
     // reopening receives its own anchor and (for AppsRequest) accepted token.
     if popup.toggles() && popup.visible(output) {
-        return false;
+        if origin.is_none() || origin == state.frame_layout.popup_origin {
+            return false;
+        }
+        state.dismiss_panels();
     }
+    let output = state
+        .outputs
+        .iter()
+        .find(|output| output.key() == key)
+        .unwrap();
     let (id, app_id) = match &popup {
         Popup::Apps => ("apps", output.launcher_app_id()),
         Popup::AppsRequest { token, .. } => (
@@ -101,32 +115,55 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
                 .unwrap_or_else(|| hearthspace_common::QUICK_PANEL_APP_ID.into()),
         ),
     };
+    let target = origin
+        .as_ref()
+        .map(|origin| origin.target.clone())
+        .or_else(|| {
+            let layout = state
+                .frame_layout
+                .snapshot
+                .outputs
+                .iter()
+                .find(|output| output.output == key)?;
+            let instance = if id == "apps" {
+                layout
+                    .layout
+                    .widget_id("launcher")
+                    .or_else(|| layout.layout.widget_id("apps"))
+            } else {
+                layout.layout.widget_id(id)
+            }?;
+            Some(hearthspace_common::frame_layout::LayoutTarget::widget(
+                instance,
+            ))
+        });
     let command = format!(
         "frame-popup-anchor {}",
         serde_json::to_string(&hearthspace_ipc::frame_layout::Anchor {
             app_id: app_id.clone(),
             output: output.key().into(),
-            target: hearthspace_common::frame_layout::LayoutTarget::widget(id)
+            target
         })
         .unwrap()
     );
-    if let Some(prior) =
-        state
-            .frame_layout
-            .intents
-            .reverse(key, &popup, state.frame_layout.popup_epoch)
-    {
+    if let Some(prior) = state.frame_layout.intents.reverse(
+        key,
+        &popup,
+        state.frame_layout.popup_epoch,
+        origin.as_ref(),
+    ) {
         // Fold open then close in one UI update. Reuse the real handlers so
         // dismissal/reset effects survive (including quick kind and query).
         open(state, key, prior);
         open(state, key, popup);
         return true;
     }
-    let intent =
-        state
-            .frame_layout
-            .intents
-            .begin(key.to_owned(), popup, state.frame_layout.popup_epoch);
+    let intent = state.frame_layout.intents.begin(
+        key.to_owned(),
+        popup,
+        state.frame_layout.popup_epoch,
+        origin.clone(),
+    );
     let request = super::task::Request {
         command,
         open: Some(intent),
@@ -139,6 +176,8 @@ pub(in crate::ui) fn defer(state: &mut ShellState, key: &str, popup: Popup) -> b
         }
         true
     } else {
+        state.frame_layout.intents.cancel();
+        state.frame_layout.popup_origin = origin;
         false
     }
 }

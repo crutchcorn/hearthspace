@@ -1,6 +1,6 @@
 //! Clicks during dock resize belong to the original control and committed layout.
 use super::*;
-use hearthspace_common::frame_layout::frame_widget_app_id;
+use crate::frame_widgets;
 
 #[test]
 fn frame_layout_pending_resize_keeps_existing_buffer_margins() {
@@ -47,7 +47,7 @@ fn frame_layout_pending_resize_click_waits_for_the_resized_native_buffer() {
         .to_owned();
     let mut client = connect(&compositor);
     let apps = client.add(
-        frame_widget_app_id(Some(&output), "apps"),
+        frame_widgets::app_id(&compositor, Some(&output), "apps"),
         (150, 54),
         (0, 0),
         COLOR,
@@ -100,7 +100,7 @@ fn frame_layout_pending_resize_preserves_outside_release_and_later_app_click() {
         .unwrap();
     action(&compositor, format!("move-window {id} 900 500"));
     let apps = client.add(
-        frame_widget_app_id(Some(&output), "apps"),
+        frame_widgets::app_id(&compositor, Some(&output), "apps"),
         (150, 54),
         (0, 0),
         COLOR,
@@ -150,7 +150,7 @@ fn frame_layout_pending_resize_cancels_dead_owner_and_lock_without_unpaired_rele
         .to_owned();
     let mut client = connect(&compositor);
     let apps = client.add(
-        frame_widget_app_id(Some(&output), "apps"),
+        frame_widgets::app_id(&compositor, Some(&output), "apps"),
         (150, 54),
         (0, 0),
         COLOR,
@@ -164,7 +164,7 @@ fn frame_layout_pending_resize_cancels_dead_owner_and_lock_without_unpaired_rele
     assert!(client.releases().is_empty());
 
     let replacement = client.add(
-        frame_widget_app_id(Some(&output), "apps"),
+        frame_widgets::app_id(&compositor, Some(&output), "apps"),
         (150, 54),
         (0, 0),
         COLOR,
@@ -208,7 +208,7 @@ fn frame_layout_pending_resize_timeout_drops_old_click_and_releases_seat() {
         .unwrap();
     action(&compositor, format!("move-window {id} 900 500"));
     let apps = client.add(
-        frame_widget_app_id(Some(&output), "apps"),
+        frame_widgets::app_id(&compositor, Some(&output), "apps"),
         (150, 54),
         (0, 0),
         COLOR,

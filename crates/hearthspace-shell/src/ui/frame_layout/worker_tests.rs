@@ -94,7 +94,20 @@ impl Server {
 }
 
 fn snapshot_bytes() -> Vec<u8> {
-    br#"{"version":1,"outputs":[{"output":"eDP-1"}]}"#.to_vec()
+    static SNAPSHOT: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    SNAPSHOT
+        .get_or_init(|| {
+            serde_json::to_vec(&Snapshot {
+                version: 1,
+                outputs: vec![super::super::Output {
+                    output: "eDP-1".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+            .unwrap()
+        })
+        .clone()
 }
 
 fn request(path: &Path) -> (ShellState, Request) {

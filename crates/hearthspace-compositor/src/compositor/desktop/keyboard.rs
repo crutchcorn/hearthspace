@@ -38,6 +38,12 @@ impl App {
             .keyboard
             .current_focus()
             .and_then(|focus| self.window_index_for_surface(focus.surface()));
+        if focused.is_some_and(|index| {
+            self.widget_kind_for_window(index).is_some() && !self.layout_target_on_frame(index)
+        }) && (symbol == keysyms::KEY_Menu || (symbol == keysyms::KEY_F10 && modifiers.shift))
+        {
+            return Some(Action::Context);
+        }
         let desktop = focused.is_none_or(|index| self.desktop_id(index).is_some());
         if !desktop && self.desktop.gesture.is_none() {
             return None;
@@ -73,7 +79,16 @@ impl App {
         match action {
             Action::CancelContext => self.cancel_pending_desktop_context(),
             Action::Context => {
-                let _ = self.open_desktop_context(self.desktop.focused.clone(), true);
+                let widget = self
+                    .keyboard
+                    .current_focus()
+                    .and_then(|focus| self.window_index_for_surface(focus.surface()))
+                    .filter(|index| self.widget_kind_for_window(*index).is_some());
+                if let Some(index) = widget {
+                    let _ = self.open_widget_context(index, true);
+                } else {
+                    let _ = self.open_desktop_context(self.desktop.focused.clone(), true);
+                }
             }
             Action::Cancel => {
                 if self.desktop.gesture.is_some() {

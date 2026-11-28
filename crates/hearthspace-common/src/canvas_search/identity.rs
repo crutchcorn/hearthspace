@@ -41,7 +41,7 @@ pub fn canvas_search_result_from_app_id(app_id: &str) -> Option<(u64, String)> {
     }
     let id = String::from_utf8(hex_decode(id)?).ok()?;
     if session == 0
-        && !["control:", "tool:"]
+        && !["control:", "tool:", "widget:"]
             .iter()
             .any(|prefix| id.strip_prefix(prefix).is_some_and(|name| !name.is_empty()))
     {

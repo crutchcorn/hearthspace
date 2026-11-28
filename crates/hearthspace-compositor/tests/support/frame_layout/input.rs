@@ -1,5 +1,6 @@
 //! Consumed backdrop gestures cannot create unmatched native releases.
 use super::*;
+use crate::frame_widgets;
 use hearthspace_common::frame_layout::{layout_confirm_app_id, layout_editor_app_id};
 
 #[test]
@@ -61,7 +62,7 @@ fn frame_layout_background_and_modal_capture_all_buttons_without_stealing_native
     command(
         &compositor,
         "remove",
-        json!({"kind":"widget","id":"tools"}),
+        frame_widgets::target(&compositor, "tools"),
         Value::Null,
     );
     let state = layout(&compositor);

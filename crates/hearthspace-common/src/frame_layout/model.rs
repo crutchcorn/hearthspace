@@ -1,3 +1,5 @@
+use super::{SYSTEM_WIDGETS, WIDGETS};
+use crate::widgets::WidgetStore;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -56,7 +58,8 @@ impl LayoutTarget {
         !self.id.is_empty()
             && self.id.len() <= 1024
             && !self.id.chars().any(char::is_control)
-            && (self.kind != TargetKind::Widget || WIDGETS.contains(&self.id.as_str()))
+            && (self.kind != TargetKind::Widget
+                || self.id.parse::<crate::widgets::InstanceId>().is_ok())
     }
 }
 
@@ -208,69 +211,18 @@ pub enum ClockDateFormat {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(try_from = "super::persistence::PersistedFrameLayout")]
 pub struct FrameLayout {
+    pub widgets: WidgetStore,
     pub placements: BTreeMap<String, ObjectPlacement>,
     pub groups: BTreeMap<String, FrameGroup>,
-    pub expanded: BTreeMap<String, bool>,
     pub allow_hide_tools: bool,
     pub clock_date_format: ClockDateFormat,
 }
 
-pub const WIDGETS: &[&str] = &[
-    "notifications",
-    "clock",
-    "wifi",
-    "volume",
-    "brightness",
-    "battery",
-    "tray",
-    "power",
-    "tools",
-    "apps",
-];
-pub const SYSTEM_WIDGETS: &[&str] = &[
-    "clock",
-    "wifi",
-    "volume",
-    "brightness",
-    "battery",
-    "tray",
-    "power",
-];
-pub const EXPANDABLE_WIDGETS: &[&str] = &[
-    "notifications",
-    "clock",
-    "wifi",
-    "volume",
-    "brightness",
-    "battery",
-];
-
-pub fn widget_title(id: &str) -> &'static str {
-    match id {
-        "notifications" => "Notifications",
-        "clock" => "Clock",
-        "wifi" => "Wi-Fi",
-        "volume" => "Sound",
-        "brightness" => "Brightness",
-        "battery" => "Battery",
-        "tray" => "System tray",
-        "power" => "Power",
-        "tools" => "Canvas tools",
-        "apps" => "Apps",
-        _ => "Item",
-    }
-}
-
 pub fn default_placement(target: &LayoutTarget) -> ObjectPlacement {
     match target.kind {
-        TargetKind::Widget => match target.id.as_str() {
-            "notifications" => ObjectPlacement::frame(FrameEdge::Top, 0.0),
-            "tools" => ObjectPlacement::frame(FrameEdge::Bottom, 0.0),
-            "apps" => ObjectPlacement::frame(FrameEdge::Bottom, 1.0),
-            _ => ObjectPlacement::frame(FrameEdge::Top, 1.0),
-        },
+        TargetKind::Widget => ObjectPlacement::canvas(),
         TargetKind::Item => ObjectPlacement::background(),
         TargetKind::Window | TargetKind::Group => ObjectPlacement::canvas(),
     }
@@ -278,24 +230,28 @@ pub fn default_placement(target: &LayoutTarget) -> ObjectPlacement {
 
 impl Default for FrameLayout {
     fn default() -> Self {
+        let mut layout = Self::empty();
+        for kind in WIDGETS.iter().copied().filter(|kind| *kind != "launcher") {
+            let placement = super::starter_placement(kind);
+            let id = layout.add_widget(kind, placement).expect("starter widget");
+            layout.set_starter_availability(&id);
+        }
         let group = FrameGroup {
             id: "system".into(),
             members: SYSTEM_WIDGETS
                 .iter()
-                .map(|id| LayoutTarget::widget(*id))
+                .map(|kind| LayoutTarget::widget(layout.widget_id(kind).expect("starter member")))
                 .collect(),
         };
-        Self {
-            placements: [(
-                "group:system".into(),
-                ObjectPlacement::frame(FrameEdge::Top, 1.0),
-            )]
-            .into(),
-            groups: [(group.id.clone(), group)].into(),
-            expanded: BTreeMap::new(),
-            allow_hide_tools: false,
-            clock_date_format: ClockDateFormat::None,
+        for member in &group.members {
+            layout.placements.remove(&member.key());
         }
+        layout.placements.insert(
+            "group:system".into(),
+            ObjectPlacement::frame(FrameEdge::Top, 1.0),
+        );
+        layout.groups.insert(group.id.clone(), group);
+        layout
     }
 }
 
@@ -320,42 +276,20 @@ impl FrameLayout {
         })
     }
 
-    pub fn is_expanded(&self, id: &str) -> bool {
-        self.expanded
-            .get(id)
-            .copied()
-            .unwrap_or(matches!(id, "clock" | "notifications"))
-    }
-
-    pub fn toggle_expanded(&mut self, id: &str) {
-        if EXPANDABLE_WIDGETS.contains(&id) {
-            self.expanded.insert(id.to_owned(), !self.is_expanded(id));
-        }
-    }
-
     pub fn set_allow_hide_tools(&mut self, allow: bool) {
         self.allow_hide_tools = allow;
-        let target = LayoutTarget::widget("tools");
-        if !allow && self.placement(&target) == ObjectPlacement::Hidden {
-            self.set_placement(&target, default_placement(&target));
-        }
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.placements.len() > 8192
-            || self.groups.len() > 1024
-            || self.expanded.len() > WIDGETS.len()
-        {
+        if self.placements.len() > 8192 || self.groups.len() > 1024 {
             return Err("too many frame layout entries");
         }
         for (key, placement) in &self.placements {
             let target = LayoutTarget::from_key(key).ok_or("invalid layout target")?;
             if !placement.valid()
                 || (target.kind == TargetKind::Group && !self.groups.contains_key(&target.id))
-                || (*placement == ObjectPlacement::Hidden && target.kind != TargetKind::Widget)
-                || (*placement == ObjectPlacement::Hidden
-                    && target.id == "tools"
-                    && !self.allow_hide_tools)
+                || (*placement == ObjectPlacement::Hidden)
+                || (target.kind == TargetKind::Widget && self.widget_kind(&target.id).is_none())
             {
                 return Err("invalid layout placement");
             }
@@ -371,6 +305,7 @@ impl FrameLayout {
             }
             for member in &group.members {
                 if !member.valid()
+                    || (member.kind == TargetKind::Widget && self.widget_kind(&member.id).is_none())
                     || member.kind == TargetKind::Group
                     || !claimed.insert(member.key())
                     || self.placements.contains_key(&member.key())
@@ -379,12 +314,13 @@ impl FrameLayout {
                 }
             }
         }
-        if self
-            .expanded
-            .keys()
-            .any(|id| !EXPANDABLE_WIDGETS.contains(&id.as_str()))
-        {
-            return Err("invalid expanded widget");
+        for instance in self.widgets.instances() {
+            let id = instance.id().to_string();
+            let target = LayoutTarget::widget(&id);
+            if !self.placements.contains_key(&target.key()) && self.group_for(&target).is_none() {
+                return Err("widget has no placement");
+            }
+            self.validate_widget_preferences(&id)?;
         }
         Ok(())
     }

@@ -1,6 +1,6 @@
 //! One projection supplies rendering, input, and native surface measurements.
 use super::{App, LayoutTarget, ObjectPlacement, PlacedTarget, Rect, Target, TargetKind};
-use hearthspace_common::frame_layout::{self, FrameLayout, WIDGETS};
+use hearthspace_common::frame_layout::{self, FrameLayout};
 mod groups;
 mod pinned;
 
@@ -105,7 +105,7 @@ impl App {
             }
             TargetKind::Widget => native
                 .map(|(width, height)| {
-                    if super::turns_as_toolbar(&target.target) {
+                    if self.turns_as_toolbar(target) {
                         let short = width.min(height);
                         let long = width.max(height);
                         if vertical {
@@ -118,14 +118,17 @@ impl App {
                     }
                 })
                 .unwrap_or_else(|| {
-                    let long = match target.target.id.as_str() {
+                    let long = match self
+                        .widget_kind(&target.output, &target.target.id)
+                        .unwrap_or("")
+                    {
                         "notifications" => 132.,
                         "clock" => 104.,
                         "tools" => 194.,
                         "apps" => 54.,
                         _ => 44.,
                     };
-                    if vertical && super::turns_as_toolbar(&target.target) {
+                    if vertical && self.turns_as_toolbar(target) {
                         (if grouped { 44. } else { 54. }, long)
                     } else {
                         (long, if grouped { 44. } else { 54. })
@@ -207,7 +210,7 @@ impl App {
             let Some(view) = self.frame_output_rect(output) else {
                 continue;
             };
-            let mut targets: Vec<_> = WIDGETS.iter().map(|id| LayoutTarget::widget(*id)).collect();
+            let mut targets: Vec<_> = layout.widget_targets().collect();
             for key in layout.placements.keys() {
                 if let Some(target) = LayoutTarget::from_key(key)
                     && !targets.contains(&target)

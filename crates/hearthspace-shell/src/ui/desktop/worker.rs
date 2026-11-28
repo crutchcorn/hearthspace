@@ -51,15 +51,14 @@ pub(super) fn discover(
     directory: Option<&Path>,
     previous: &[DesktopItem],
 ) -> (AppCatalog, Vec<DesktopItem>, Option<String>) {
-    let (mut items, mut error) = match desktop_items::discover(&catalog, directory) {
+    let (mut items, mut error) = match desktop_items::discover(directory) {
         Ok(items) => (items, None),
         Err(error) => {
-            let mut items: Vec<_> = previous
+            let items: Vec<_> = previous
                 .iter()
                 .filter(|item| !matches!(item.kind, DesktopItemKind::App { .. }))
                 .cloned()
                 .collect();
-            items.extend(desktop_items::discover(&catalog, None).unwrap_or_default());
             (
                 items,
                 Some(format!("Desktop folder is unavailable: {error}")),
@@ -110,11 +109,15 @@ pub(super) fn registration_commands(ids: &[String]) -> Vec<String> {
     commands
 }
 
-pub(super) fn register(socket: &Path, items: &[DesktopItem]) -> Result<(), String> {
+pub(super) fn register(
+    socket: &Path,
+    items: &[DesktopItem],
+    catalog: &AppCatalog,
+) -> Result<(), String> {
     let ids: Vec<_> = items.iter().map(|item| item.id.clone()).collect();
     for command in registration_commands(&ids)
         .into_iter()
-        .chain(search_registration::commands(items))
+        .chain(search_registration::commands(items, catalog))
         .chain(file_registration::commands(items))
     {
         command_client::send_command(socket, &command)
@@ -178,6 +181,16 @@ pub(super) fn perform(
     let item = items
         .iter()
         .find(|item| item.id == action.id)
+        .cloned()
+        .or_else(|| {
+            action
+                .id
+                .starts_with("app:")
+                .then(|| {
+                    super::super::context_items::resolve(&action.id, catalog, std::iter::empty())
+                })
+                .flatten()
+        })
         .ok_or_else(|| Failure::report("This desktop item is no longer available."))?;
     match action.action.as_str() {
         "activate" => {

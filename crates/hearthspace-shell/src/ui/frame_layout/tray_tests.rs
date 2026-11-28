@@ -1,5 +1,6 @@
 use super::super::tray as frame_tray;
 use super::*;
+use crate::ui::frame_layout::fixture;
 use masonry::{
     core::{
         PointerButtonEvent, PointerEvent, PointerInfo, PointerState, PointerType, PointerUpdate,
@@ -22,7 +23,7 @@ fn tray_state(vertical: bool) -> ShellState {
         ..Default::default()
     };
     output.layout.set_placement(
-        &LayoutTarget::widget("tray"),
+        &fixture::layout_target(&output.layout, "tray"),
         ObjectPlacement::frame(
             if vertical {
                 FrameEdge::Left
@@ -38,7 +39,7 @@ fn tray_state(vertical: bool) -> ShellState {
 fn vertical(state: &ShellState) -> bool {
     state.frame_layout.snapshot.outputs[0]
         .layout
-        .placement(&LayoutTarget::widget("tray"))
+        .placement(&fixture::target(state, "test", "tray"))
         .edge()
         .is_some_and(|edge| edge.is_vertical())
 }
@@ -62,13 +63,13 @@ fn tray_size(state: &ShellState) -> (f64, f64) {
 fn view(
     state: &ShellState,
 ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
-    let chain = &state.frame_layout.chains[&widget_key("test", "tray")];
+    let chain = &state.frame_layout.chains[&fixture::key(state, "test", "tray")];
     let size = tray_size(state);
     sized_box(focus::boundary(
         sized_box(widgets::content(
             state,
             &state.outputs[0],
-            "tray",
+            &fixture::id(state, state.outputs[0].key(), "tray"),
             vertical(state),
             false,
             Default::default(),
@@ -77,7 +78,7 @@ fn view(
         .padding(5.0.px()),
         chain.clone(),
         "test".into(),
-        LayoutTarget::widget("tray"),
+        fixture::target(state, "test", "tray"),
         state.frame_layout.snapshot.focus_request.clone(),
     ))
     .width(size.0.px())
@@ -135,7 +136,7 @@ fn standalone_tray_tab_and_reverse_entry_reveal_every_app_in_both_orientations()
         ui.state.frame_layout.snapshot.focus_request = Some(FocusRequest {
             serial: 1,
             output: "test".into(),
-            target: LayoutTarget::widget("tray"),
+            target: fixture::target(&ui.state, "test", "tray"),
             reverse: true,
         });
         ui.rebuild(&view);
@@ -252,7 +253,9 @@ fn fitting_and_grouped_trays_keep_application_wheel_actions() {
     for grouped in [false, true] {
         let mut state = tray_state(false);
         if grouped {
-            state.frame_layout.snapshot.outputs[0].layout = Default::default();
+            let mut snapshot = state.frame_layout.snapshot.clone();
+            snapshot.outputs[0].layout = Default::default();
+            apply(&mut state, snapshot);
         } else {
             state.tray.snapshot.items.truncate(2);
         }

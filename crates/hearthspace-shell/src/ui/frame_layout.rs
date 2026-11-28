@@ -13,6 +13,8 @@ mod dock;
 pub(super) use dock::width as dock_width;
 mod editor;
 mod editor_clock;
+#[cfg(test)]
+pub(super) mod fixture;
 pub(super) mod focus;
 pub(super) mod items;
 mod parts;
@@ -55,6 +57,9 @@ pub(super) struct State {
     pub refresh: Arc<Notify>,
     requests: Option<mpsc::Sender<task::Request>>,
     opening_popup: bool,
+    // Scoped to a native widget's message delivery, including composite controls.
+    activation_origin: Option<hearthspace_ipc::frame_layout::Selection>,
+    popup_origin: Option<hearthspace_ipc::frame_layout::Selection>,
     pub intents: popup_intent::Intents,
     availability: Option<tokio::sync::watch::Sender<Vec<(String, String, bool)>>>,
     windows: BTreeMap<String, WindowId>,
@@ -131,7 +136,7 @@ pub(super) fn selected_command(
     }
 }
 
-fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
+pub(super) fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
     if snapshot.popup_epoch < state.frame_layout.popup_epoch {
         return;
     }
@@ -189,8 +194,8 @@ fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
             .or_insert_with(WindowId::next);
     }
     for output in &snapshot.outputs {
-        for id in hearthspace_common::frame_layout::WIDGETS {
-            let key = widget_key(&output.output, id);
+        for target in output.layout.widget_targets() {
+            let key = widget_key(&output.output, &target.id);
             state
                 .frame_layout
                 .windows
@@ -225,6 +230,24 @@ fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
             }
         }
     }
+    let widget_keys: std::collections::BTreeSet<_> = snapshot
+        .outputs
+        .iter()
+        .flat_map(|output| {
+            output
+                .layout
+                .widget_targets()
+                .map(|target| widget_key(&output.output, &target.id))
+        })
+        .collect();
+    state
+        .frame_layout
+        .windows
+        .retain(|key, _| !key.starts_with("widget:") || widget_keys.contains(key));
+    state
+        .frame_layout
+        .chains
+        .retain(|key, _| !key.starts_with("widget:") || widget_keys.contains(key));
     if snapshot.editing && (!state.frame_layout.snapshot.editing || new_session) {
         state.dismiss_panels();
     }
@@ -234,6 +257,7 @@ fn apply(state: &mut ShellState, mut snapshot: Snapshot) {
         state.frame_layout.last_primary_tool = Some(tool);
     }
     state.frame_layout.snapshot = snapshot;
+    super::desktop::reconcile_pinned_apps(state);
 }
 
 pub(super) fn cancel_popups(state: &mut ShellState, epoch: u64) {
@@ -312,4 +336,19 @@ pub(super) fn reconcile(state: &ShellState) {
             }
         });
     }
+}
+
+pub(super) fn popup_widget(state: &ShellState, output: &str, kind: &str) -> Option<String> {
+    let origin = state
+        .frame_layout
+        .popup_origin
+        .as_ref()
+        .filter(|origin| origin.output == output)?;
+    let layout = state
+        .frame_layout
+        .snapshot
+        .outputs
+        .iter()
+        .find(|layout| layout.output == output)?;
+    (layout.layout.widget_kind(&origin.target.id) == Some(kind)).then(|| origin.target.id.clone())
 }

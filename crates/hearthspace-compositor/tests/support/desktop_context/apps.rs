@@ -1,5 +1,6 @@
 //! Catalog menus preserve the source client's input and compositor-owned generation.
 use super::*;
+use crate::frame_widgets;
 
 #[path = "accessibility.rs"]
 mod accessibility;
@@ -206,14 +207,14 @@ fn dock_context_uses_the_actual_apps_widget_and_keeps_its_release_and_focus() {
         .as_str()
         .unwrap()
         .to_owned();
-    let app_id = hearthspace_common::frame_layout::frame_widget_app_id(Some(&output), "apps");
+    let app_id = frame_widgets::app_id(&compositor, Some(&output), "apps");
     let dock = client.add(app_id.clone(), (300, 54), (0, 0), [0, 255, 0, 255]);
     let layout = query(&compositor, "layout-status");
     let rect = &layout["outputs"][0]["widgets"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == "apps")
+        .find(|widget| widget["kind"] == "apps")
         .unwrap()["rect"];
     let x = rect["x"].as_f64().unwrap() + 20.;
     let y = rect["y"].as_f64().unwrap() + 20.;

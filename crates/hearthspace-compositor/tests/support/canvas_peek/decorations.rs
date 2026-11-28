@@ -1,4 +1,5 @@
 use super::*;
+use crate::frame_widgets;
 
 #[test]
 fn canvas_peek_icon_uses_artwork_at_zoom_and_returns_only_when_its_whole_home_clears() {
@@ -71,7 +72,7 @@ fn control_rect(compositor: &HeadlessCompositor) -> Value {
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == "wifi")
+        .find(|widget| widget["kind"] == "wifi")
         .unwrap()["rect"]
         .clone()
 }
@@ -108,12 +109,12 @@ fn canvas_peek_control_restores_but_background_layout_drop_adopts_home_without_m
         .unwrap()
         .to_owned();
     client.add(
-        hearthspace_common::frame_layout::frame_widget_app_id(Some(&output), "wifi"),
+        frame_widgets::app_id(&compositor, Some(&output), "wifi"),
         (44, 44),
         (0, 0),
         COLOR,
     );
-    let target = json!({"kind":"widget","id":"wifi"});
+    let target = frame_widgets::target(&compositor, "wifi");
     place(&compositor, target.clone(), "canvas", 600.0, 300.0);
     let home = json!({"x":600.0,"y":300.0,"width":44.0,"height":44.0});
     wait_control(&compositor, home.clone());

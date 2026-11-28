@@ -217,9 +217,11 @@ impl App {
 
     fn target_title(&self, target: &Target) -> String {
         match target.target.kind {
-            TargetKind::Widget => {
-                hearthspace_common::frame_layout::widget_title(&target.target.id).into()
-            }
+            TargetKind::Widget => hearthspace_common::frame_layout::widget_title(
+                self.widget_kind(&target.output, &target.target.id)
+                    .unwrap_or(""),
+            )
+            .into(),
             TargetKind::Group => "Frame group".into(),
             _ => self
                 .target_window_index(target)
@@ -253,11 +255,29 @@ impl App {
     }
 }
 
-fn turns_as_toolbar(target: &LayoutTarget) -> bool {
-    target.kind == TargetKind::Group
-        || (target.kind == TargetKind::Widget
-            && matches!(
-                target.id.as_str(),
-                "tools" | "apps" | "tray" | "clock" | "notifications"
-            ))
+impl App {
+    pub(in crate::compositor) fn widget_kind(
+        &self,
+        output: &str,
+        id: &str,
+    ) -> Option<&'static str> {
+        self.layout_editor.layouts.get(output)?.widget_kind(id)
+    }
+
+    pub(in crate::compositor) fn widget_kind_for_window(
+        &self,
+        index: usize,
+    ) -> Option<&'static str> {
+        let (output, id) = self.frame_widget_identity(index)?;
+        self.widget_kind(&output, &id)
+    }
+
+    fn turns_as_toolbar(&self, target: &Target) -> bool {
+        target.target.kind == TargetKind::Group
+            || (target.target.kind == TargetKind::Widget
+                && matches!(
+                    self.widget_kind(&target.output, &target.target.id),
+                    Some("tools" | "apps" | "tray" | "clock" | "notifications")
+                ))
+    }
 }

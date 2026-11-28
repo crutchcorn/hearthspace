@@ -140,3 +140,62 @@ fn registration_has_only_implemented_controls_and_unique_surface_ids() {
         assert!(pan["search_text"].as_str().unwrap().contains(keyword));
     }
 }
+
+#[test]
+fn add_widget_card_uses_search_activation_even_when_the_kind_already_exists() {
+    fn card(
+        state: &ShellState,
+    ) -> impl WidgetView<ShellState, Widget = masonry::widgets::SizedBox> + use<> {
+        let clock = ENTRIES
+            .iter()
+            .find(|entry| entry.id == "widget:clock")
+            .unwrap();
+        sized_box(view(state, clock))
+    }
+    let mut state = ShellState::new("/unused".into(), vec!["left".into()]);
+    state
+        .frame_layout
+        .snapshot
+        .outputs
+        .push(crate::ui::frame_layout::Output {
+            output: "left".into(),
+            ..Default::default()
+        });
+    state.canvas_search.snapshot.session = 11;
+    state.canvas_search.snapshot.active = true;
+    state.canvas_search.snapshot.filter = hearthspace_common::canvas_search::Filter::Widgets;
+    state
+        .canvas_search
+        .snapshot
+        .results
+        .push(crate::ui::canvas_search::ResultEntry {
+            id: "widget:clock".into(),
+            title: "Add Clock".into(),
+            kind: "widget".into(),
+            selected: true,
+        });
+    let before = state.frame_layout.snapshot.outputs[0]
+        .layout
+        .widgets
+        .instances()
+        .count();
+    let (sender, mut requests) = tokio::sync::mpsc::channel(4);
+    state.canvas_search.requests = Some(sender);
+    let mut ui = Ui::new(state, card, (240, 72));
+    ui.activate(ui.button("Add Clock Add widget to canvas"));
+    ui.dispatch(&card);
+    let command = requests.try_recv().unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(command.strip_prefix("canvas-search-activate ").unwrap()).unwrap();
+    assert_eq!(value["session"], 11);
+    assert_eq!(value["id"], "widget:clock");
+    assert_eq!(
+        ui.state.frame_layout.snapshot.outputs[0]
+            .layout
+            .widgets
+            .instances()
+            .count(),
+        before,
+        "only compositor acceptance may create the new copy"
+    );
+}

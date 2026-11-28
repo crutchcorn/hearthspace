@@ -62,9 +62,12 @@ fn selection(
 fn options(state: &ShellState) -> (bool, bool, bool) {
     selection(state).map_or((false, false, false), |(target, layout)| {
         (
-            target.kind == TargetKind::Widget && EXPANDABLE_WIDGETS.contains(&target.id.as_str()),
+            target.kind == TargetKind::Widget
+                && layout
+                    .widget_kind(&target.id)
+                    .is_some_and(|kind| EXPANDABLE_WIDGETS.contains(&kind)),
             layout.group_for(target).is_some(),
-            target.kind == TargetKind::Widget && target.id == "clock",
+            target.kind == TargetKind::Widget && layout.widget_kind(&target.id) == Some("clock"),
         )
     })
 }
@@ -74,6 +77,7 @@ fn size(state: &ShellState) -> (f64, f64) {
     let height = hearthspace_common::frame_layout::editor_height(
         selected.map(|(target, _)| target),
         selected.is_some_and(|(target, layout)| layout.group_for(target).is_some()),
+        selected.and_then(|(target, layout)| layout.widget_kind(&target.id)),
     );
     (
         state
@@ -95,8 +99,13 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
         state.frame_layout.snapshot.selected_title.clone()
     } else {
         selected
-            .map(|(target, _)| {
-                hearthspace_common::frame_layout::widget_title(&target.id).to_owned()
+            .map(|(_, _)| {
+                hearthspace_common::frame_layout::widget_title(
+                    selected
+                        .and_then(|(target, layout)| layout.widget_kind(&target.id))
+                        .unwrap_or(""),
+                )
+                .to_owned()
             })
             .unwrap_or_default()
     };
@@ -227,7 +236,9 @@ pub(super) fn view(state: &ShellState) -> impl WidgetView<ShellState> + use<> {
     });
     let date = is_clock.then(|| {
         super::editor_clock::view(
-            selected.unwrap().1.clock_date_format,
+            selected
+                .map(|(target, layout)| layout.widget_clock_date_format(&target.id))
+                .unwrap_or_default(),
             state.appearance.palette,
         )
     });

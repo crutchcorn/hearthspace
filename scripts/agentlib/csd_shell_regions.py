@@ -47,7 +47,7 @@ def _inside(rect, owner):
 def _members(status):
     regions, seen = {}, set()
     for item in output_layout(status)["widgets"]:
-        widget = item["id"]
+        widget = item.get("kind", item["id"])
         if widget not in SYSTEM_WIDGETS:
             continue
         if widget in seen:

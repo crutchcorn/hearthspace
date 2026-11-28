@@ -369,3 +369,5 @@ mod tests {
         );
     }
 }
+
+pub mod widgets;

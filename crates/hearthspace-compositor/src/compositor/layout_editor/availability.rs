@@ -25,9 +25,15 @@ impl App {
         Ok(())
     }
     pub(super) fn frame_widget_available(&self, output: &str, id: &str) -> bool {
+        let Some(kind) = self.widget_kind(output, id) else {
+            return false;
+        };
+        if !self.layout_editor.layouts[output].widget_hides_when_unavailable(id) {
+            return true;
+        }
         !self
             .layout_editor
             .unavailable
-            .contains(&(output.into(), id.into()))
+            .contains(&(output.into(), kind.into()))
     }
 }

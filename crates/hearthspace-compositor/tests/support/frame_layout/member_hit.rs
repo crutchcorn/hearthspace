@@ -1,8 +1,7 @@
 //! A late-mapped grip must not intercept presses on a group's real controls.
 use super::*;
-use hearthspace_common::frame_layout::{
-    frame_group_app_id, frame_group_grip_app_id, frame_widget_app_id,
-};
+use crate::frame_widgets;
+use hearthspace_common::frame_layout::{frame_group_app_id, frame_group_grip_app_id};
 
 fn center(rect: &Value) -> (f64, f64) {
     (
@@ -16,7 +15,7 @@ fn widget(state: &Value, id: &str) -> Value {
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == id)
+        .find(|widget| widget["kind"] == id)
         .unwrap()
         .clone()
 }
@@ -77,7 +76,12 @@ fn frame_layout_late_group_grip_preserves_member_detach_and_regroup(#[case] touc
         .to_owned();
     let mut client = connect(&compositor);
     for (id, size) in [("clock", (70, 44)), ("wifi", (44, 44))] {
-        client.add(frame_widget_app_id(Some(&output), id), size, (0, 0), COLOR);
+        client.add(
+            frame_widgets::app_id(&compositor, Some(&output), id),
+            size,
+            (0, 0),
+            COLOR,
+        );
     }
     client.add(
         frame_group_app_id(Some(&output), "system"),
@@ -97,7 +101,7 @@ fn frame_layout_late_group_grip_preserves_member_detach_and_regroup(#[case] touc
     press(&compositor, touch, center(&widget(&before, "wifi")["rect"]));
     assert_eq!(
         layout(&compositor)["selected"]["target"],
-        json!({"kind":"widget","id":"wifi"}),
+        frame_widgets::target(&compositor, "wifi"),
         "the group grip intercepted a member press"
     );
     motion(&compositor, touch, (400., 350.));
@@ -105,7 +109,8 @@ fn frame_layout_late_group_grip_preserves_member_detach_and_regroup(#[case] touc
     let detached = layout(&compositor);
     assert!(widget(&detached, "wifi")["group"].is_null());
     assert_eq!(
-        detached["outputs"][0]["layout"]["placements"]["widget:wifi"]["surface"],
+        detached["outputs"][0]["layout"]["placements"]
+            [format!("widget:{}", frame_widgets::id(&compositor, "wifi"))]["surface"],
         "canvas"
     );
     assert_eq!(
@@ -122,7 +127,11 @@ fn frame_layout_late_group_grip_preserves_member_detach_and_regroup(#[case] touc
     release(&compositor, touch);
     let regrouped = layout(&compositor);
     assert_eq!(widget(&regrouped, "wifi")["group"], "system");
-    assert!(regrouped["outputs"][0]["layout"]["placements"]["widget:wifi"].is_null());
+    assert!(
+        regrouped["outputs"][0]["layout"]["placements"]
+            [format!("widget:{}", frame_widgets::id(&compositor, "wifi"))]
+        .is_null()
+    );
 
     let grip = &regrouped["outputs"][0]["groups"][0]["grip"];
     press(&compositor, touch, center(grip));

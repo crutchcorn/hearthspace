@@ -1,6 +1,7 @@
 //! Real frame surfaces share glass sampling and fullscreen visibility.
 use super::*;
-use hearthspace_common::frame_layout::{frame_group_app_id, frame_widget_app_id};
+use crate::frame_widgets;
+use hearthspace_common::frame_layout::frame_group_app_id;
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Mode;
 
 const APP: [u8; 4] = [190, 70, 20, 255];
@@ -149,8 +150,8 @@ fn frame_layout_shortcuts_widgets_and_groups_use_one_matching_blur() {
             json!({"kind":"item","id":ITEM_ID}),
         ),
         (
-            frame_widget_app_id(Some(&output), "tools"),
-            json!({"kind":"widget","id":"tools"}),
+            frame_widgets::app_id(&compositor, Some(&output), "tools"),
+            frame_widgets::target(&compositor, "tools"),
         ),
         (
             frame_group_app_id(Some(&output), "system"),
@@ -162,7 +163,7 @@ fn frame_layout_shortcuts_widgets_and_groups_use_one_matching_blur() {
                 .into_iter()
                 .map(|id| {
                     client.add(
-                        frame_widget_app_id(Some(&output), id),
+                        frame_widgets::app_id(&compositor, Some(&output), id),
                         (44, 44),
                         (0, 0),
                         [0; 4],

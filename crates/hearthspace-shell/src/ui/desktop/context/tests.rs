@@ -120,13 +120,16 @@ fn canvas_context_menu_keyboard_scrolls_to_actions_in_a_small_output() {
     let mut ui = Ui::new(state, panel, (260, 180));
     assert_eq!(
         ui.harness.focused_widget_id(),
-        Some(named(&ui, "New Folder…", Role::MenuItem))
+        Some(named(&ui, "Add Widget…", Role::MenuItem))
     );
-    for _ in 0..7 {
+    let settings = named(&ui, "Settings", Role::MenuItem);
+    for _ in 0..32 {
+        if ui.harness.focused_widget_id() == Some(settings) {
+            break;
+        }
         press(&mut ui, NamedKey::ArrowDown);
         ui.dispatch(&panel);
     }
-    let settings = named(&ui, "Settings", Role::MenuItem);
     assert_eq!(ui.harness.focused_widget_id(), Some(settings));
     let bounds = ui
         .harness

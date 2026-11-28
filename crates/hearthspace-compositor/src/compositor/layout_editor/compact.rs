@@ -2,7 +2,7 @@
 use super::{
     App, FrameLayout, LayoutTarget, ObjectPlacement, PlacedTarget, Rect, Target, TargetKind,
 };
-use hearthspace_common::frame_layout::{FrameEdge, SYSTEM_WIDGETS, default_placement};
+use hearthspace_common::frame_layout::{FrameEdge, SYSTEM_WIDGETS, starter_placement};
 
 const TOP: &str = "@compact-top";
 const BOTTOM: &str = "@compact-bottom";
@@ -16,16 +16,20 @@ fn defaults(layout: &FrameLayout, view: Rect) -> (bool, bool) {
         return (false, false);
     }
     let original = |id| {
-        let target = LayoutTarget::widget(id);
-        layout.group_for(&target).is_none()
-            && layout.placement(&target) == default_placement(&target)
+        let Some(instance) = layout.widget_id(id) else {
+            return false;
+        };
+        let target = LayoutTarget::widget(instance);
+        layout.group_for(&target).is_none() && layout.placement(&target) == starter_placement(id)
     };
     let system = layout.groups.get("system").is_some_and(|group| {
-        group.members
-            == SYSTEM_WIDGETS
-                .iter()
-                .map(|id| LayoutTarget::widget(*id))
-                .collect::<Vec<_>>()
+        group.members.len() == SYSTEM_WIDGETS.len()
+            && group.members
+                == SYSTEM_WIDGETS
+                    .iter()
+                    .filter_map(|kind| layout.widget_id(kind))
+                    .map(LayoutTarget::widget)
+                    .collect::<Vec<_>>()
             && layout.placement(&LayoutTarget::new(TargetKind::Group, "system"))
                 == ObjectPlacement::frame(FrameEdge::Top, 1.)
     });
@@ -46,7 +50,12 @@ impl App {
 
     pub(super) fn frame_widget_merged(&self, output: &str, id: &str) -> bool {
         let (top, bottom) = self.compact_frame_bars(output);
-        (top && id == "notifications") || (bottom && matches!(id, "tools" | "apps"))
+        let Some(layout) = self.layout_editor.layouts.get(output) else {
+            return false;
+        };
+        let is_primary = |kind| layout.widget_id(kind).as_deref() == Some(id);
+        (top && is_primary("notifications"))
+            || (bottom && (is_primary("tools") || is_primary("apps")))
     }
 
     pub(super) fn frame_group_material(&self, output: &str, id: &str) -> bool {
@@ -74,15 +83,21 @@ impl App {
         let target = self.frame_target_for_window(index)?;
         let (top, bottom) = self.compact_frame_bars(&target.output);
         let placed = self.frame_placed(&target)?;
+        let layout = self.layout_editor.layouts.get(&target.output)?;
+        let primary = |kind| {
+            layout
+                .widget_id(kind)
+                .is_some_and(|id| target.target == LayoutTarget::widget(id))
+        };
         let id = if top
-            && (target.target == LayoutTarget::widget("notifications")
+            && (primary("notifications")
                 || target.target == LayoutTarget::new(TargetKind::Group, "system")
                 || placed.group.as_deref() == Some("system"))
         {
             TOP
         } else if bottom
             && target.target.kind == TargetKind::Widget
-            && matches!(target.target.id.as_str(), "tools" | "apps")
+            && (primary("tools") || primary("apps"))
         {
             BOTTOM
         } else {
@@ -135,8 +150,12 @@ impl App {
                 } else {
                     "tools"
                 };
+                let Some(left_instance) = layout.widget_id(left_id) else {
+                    continue;
+                };
                 let Some(left) = placed.iter_mut().find(|p| {
-                    p.target.output == *output && p.target.target == LayoutTarget::widget(left_id)
+                    p.target.output == *output
+                        && p.target.target == LayoutTarget::widget(&left_instance)
                 }) else {
                     continue;
                 };
@@ -149,9 +168,10 @@ impl App {
                 let remaining_x = left.rect.x + left.rect.width + 4.;
                 let remaining_width = (rect.x + rect.width - 5. - remaining_x).max(1.);
                 if edge == FrameEdge::Bottom {
+                    let apps_instance = layout.widget_id("apps");
                     if let Some(apps) = placed.iter_mut().find(|p| {
                         p.target.output == *output
-                            && p.target.target == LayoutTarget::widget("apps")
+                            && apps_instance.as_deref() == Some(p.target.target.id.as_str())
                     }) {
                         apps.rect.x = remaining_x;
                         apps.rect.width = remaining_width;

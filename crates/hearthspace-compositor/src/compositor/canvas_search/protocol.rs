@@ -1,4 +1,4 @@
-use super::{App, Entry, Point};
+use super::{App, Entry, Filter, Point};
 use crate::compositor::{
     CalloopData,
     shell_integration::{ControlReply, command_socket_path},
@@ -42,6 +42,7 @@ impl App {
             status["session"] = json!(s.id);
             status["output"] = json!(s.output);
             status["query"] = json!(s.query);
+            status["filter"] = json!(s.filter);
             status["field"] = rect(s.field);
             status["results_above"] = json!(s.above);
             status["result_count"] = json!(s.results.len());
@@ -87,15 +88,16 @@ impl App {
         entries: Vec<Entry>,
         desktop: bool,
     ) -> Result<(), String> {
-        if offset > 4096
-            || entries.len() > 4096 - offset
+        let limit = if desktop { 8192 } else { 4096 };
+        if offset > limit
+            || entries.len() > limit - offset
             || entries.iter().any(|e| {
                 e.id.is_empty()
                     || e.id.len() > 1024
                     || e.title.len() > 4096
                     || e.search_text.len() > 8192
                     || e.id.chars().any(char::is_control)
-                    || !["control:", "tool:", "app:", "file:"]
+                    || !["control:", "tool:", "app:", "file:", "widget:"]
                         .iter()
                         .any(|prefix| e.id.starts_with(prefix))
             })
@@ -163,6 +165,8 @@ impl CalloopData {
                     x: Option<f64>,
                     y: Option<f64>,
                     output: Option<String>,
+                    #[serde(default)]
+                    filter: Filter,
                 }
                 let value: Open =
                     serde_json::from_str(value).map_err(|_| "invalid canvas search anchor")?;
@@ -171,7 +175,7 @@ impl CalloopData {
                     (None, None) => None,
                     _ => return Err("invalid canvas search anchor".into()),
                 };
-                app.open_canvas_search(point, value.output)
+                app.open_canvas_search_filtered(point, value.output, value.filter)
             } else if let Some(value) = text.strip_prefix("canvas-search-close ") {
                 let id = value.parse().map_err(|_| "invalid canvas search session")?;
                 app.check_canvas_search_session(id)?;

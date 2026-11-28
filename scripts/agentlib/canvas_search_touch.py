@@ -49,7 +49,7 @@ def opened(smoke):
     smoke.until(
         "native search editor",
         lambda: (
-            "Search apps, windows, files, folders, controls, and tools"
+            "Search apps, windows, files, folders, widgets, controls, and tools"
             in a11y(smoke, "snapshot")["snapshot"]
         ),
     )

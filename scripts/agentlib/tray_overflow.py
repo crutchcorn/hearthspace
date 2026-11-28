@@ -18,6 +18,16 @@ def place(smoke, edge):
     editing = smoke.control.query("layout-status")
 
     def command(action, kind="widget", name="tray", **values):
+        if kind == "widget":
+            matches = [
+                item
+                for output in editing["outputs"]
+                for item in output["widgets"]
+                if output["output"] == editing["output"]
+                and item.get("kind", item["id"]) == name
+            ]
+            if len(matches) == 1:
+                name = matches[0]["id"]
         smoke.control.request(
             "layout-command "
             + json.dumps(
@@ -39,7 +49,7 @@ def place(smoke, edge):
         item for item in editing["outputs"] if item["output"] == editing["output"]
     )
     for widget in output["widgets"]:
-        if widget["id"] not in ("tray", "apps"):
+        if widget.get("kind", widget["id"]) not in ("tray", "apps"):
             command("remove", name=widget["id"])
     command(
         "place",

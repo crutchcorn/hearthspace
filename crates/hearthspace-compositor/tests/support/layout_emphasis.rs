@@ -2,7 +2,8 @@
 use super::navigation::{action, query};
 use super::shell_panels::{click, connect};
 use super::*;
-use hearthspace_common::frame_layout::{frame_group_app_id, frame_widget_app_id};
+use crate::frame_widgets;
+use hearthspace_common::frame_layout::frame_group_app_id;
 use serde_json::Value;
 
 fn group(compositor: &HeadlessCompositor, id: &str) -> Value {
@@ -27,7 +28,7 @@ fn layout_group_hover_and_focus_follow_members_and_stop_at_group_boundaries() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|widget| widget["id"] == "wifi")
+        .find(|widget| widget["kind"] == "wifi")
         .unwrap();
     let group_id = wifi["group"].as_str().unwrap();
     let mut client = connect(&compositor);
@@ -42,7 +43,7 @@ fn layout_group_hover_and_focus_follow_members_and_stop_at_group_boundaries() {
         [30, 40, 50, 255],
     );
     let wifi_surface = client.add(
-        frame_widget_app_id(Some(output), "wifi"),
+        frame_widgets::app_id(&compositor, Some(output), "wifi"),
         (44, 44),
         (0, 0),
         [100, 130, 170, 255],

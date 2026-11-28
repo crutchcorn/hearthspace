@@ -95,4 +95,73 @@ pub(super) const ENTRIES: &[Entry] = &[
         keywords: "map minimap zoom canvas",
         icon: Icon::Map,
     },
+    Entry {
+        id: "widget:notifications",
+        title: "Add Notifications",
+        keywords: "alerts messages bell",
+        icon: Icon::Bell,
+    },
+    Entry {
+        id: "widget:clock",
+        title: "Add Clock",
+        keywords: "time date calendar",
+        icon: Icon::Clock,
+    },
+    Entry {
+        id: "widget:wifi",
+        title: "Add Wi-Fi",
+        keywords: "wireless network internet",
+        icon: Icon::Wifi,
+    },
+    Entry {
+        id: "widget:volume",
+        title: "Add Sound",
+        keywords: "audio volume speaker",
+        icon: Icon::Volume,
+    },
+    Entry {
+        id: "widget:brightness",
+        title: "Add Brightness",
+        keywords: "display screen backlight",
+        icon: Icon::Sun,
+    },
+    Entry {
+        id: "widget:battery",
+        title: "Add Battery",
+        keywords: "energy charge percentage",
+        icon: Icon::Battery {
+            percentage: 100,
+            charging: false,
+        },
+    },
+    Entry {
+        id: "widget:tray",
+        title: "Add Application tray",
+        keywords: "system status icons tray applications",
+        icon: Icon::AppsGrid,
+    },
+    Entry {
+        id: "widget:power",
+        title: "Add Power",
+        keywords: "shutdown session logout suspend",
+        icon: Icon::Power,
+    },
+    Entry {
+        id: "widget:tools",
+        title: "Add Canvas tools",
+        keywords: "navigation toolbar select pan search layout",
+        icon: Icon::Cursor,
+    },
+    Entry {
+        id: "widget:apps",
+        title: "Add App dock",
+        keywords: "favorites running applications apps",
+        icon: Icon::AppsGrid,
+    },
+    Entry {
+        id: "widget:launcher",
+        title: "Add App launcher",
+        keywords: "installed applications apps list launch",
+        icon: Icon::AppsGrid,
+    },
 ];

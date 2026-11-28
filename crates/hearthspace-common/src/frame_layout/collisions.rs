@@ -85,9 +85,9 @@ mod tests {
     #[test]
     fn viewport_collision_merges_connected_attachments_once_in_measured_order() {
         let mut layout = FrameLayout::default();
-        let first = LayoutTarget::widget("notifications");
-        let second = LayoutTarget::widget("apps");
-        let third = LayoutTarget::widget("tools");
+        let first = LayoutTarget::widget(layout.widget_id("notifications").unwrap());
+        let second = LayoutTarget::widget(layout.widget_id("apps").unwrap());
+        let third = LayoutTarget::widget(layout.widget_id("tools").unwrap());
         for target in [&first, &second, &third] {
             layout.set_placement(target, ObjectPlacement::frame(FrameEdge::Top, 0.0));
         }
@@ -120,9 +120,9 @@ mod tests {
     #[test]
     fn touching_canvas_hidden_and_invalid_bounds_never_merge() {
         let mut layout = FrameLayout::default();
-        let first = LayoutTarget::widget("notifications");
-        let second = LayoutTarget::widget("apps");
-        let tools = LayoutTarget::widget("tools");
+        let first = LayoutTarget::widget(layout.widget_id("notifications").unwrap());
+        let second = LayoutTarget::widget(layout.widget_id("apps").unwrap());
+        let tools = LayoutTarget::widget(layout.widget_id("tools").unwrap());
         layout.set_placement(&tools, ObjectPlacement::canvas());
         let bounds = |x| Rect {
             x,

@@ -41,6 +41,43 @@ impl App {
             .map(|(index, id)| (id, index))
             .collect();
         items.sort_by_key(|item| order.get(&item.id).copied().unwrap_or(usize::MAX));
+        for entry in self
+            .canvas_search
+            .desktop_entries
+            .iter()
+            .filter(|entry| entry.id.starts_with("app:"))
+        {
+            if items.iter().any(|item| item.id == entry.id) {
+                continue;
+            }
+            let window = self.windows.iter().enumerate().find_map(|(index, window)| {
+                (window.mapped
+                    && self
+                        .canvas_search_result_identity(index)
+                        .is_some_and(|(session, id)| {
+                            id == entry.id
+                                && self
+                                    .canvas_search
+                                    .session
+                                    .as_ref()
+                                    .is_some_and(|active| session == active.id)
+                        }))
+                .then_some(window.id)
+            });
+            items.push(ResultItem {
+                id: entry.id.clone(),
+                title: entry.title.clone(),
+                search_text: entry.search_text.clone(),
+                kind: "app",
+                window,
+                natural: Rect {
+                    x: 0.,
+                    y: 0.,
+                    width: 240.,
+                    height: 72.,
+                },
+            });
+        }
         for (index, window) in self.windows.iter().enumerate().rev() {
             if !self.is_navigable_window(index) {
                 continue;
@@ -83,6 +120,8 @@ impl App {
                 search_text: entry.search_text.clone(),
                 kind: if entry.id.starts_with("tool:") {
                     "tool"
+                } else if entry.id.starts_with("widget:") {
+                    "widget"
                 } else {
                     "control"
                 },
@@ -104,9 +143,11 @@ impl App {
         let view = session.view;
         let anchor = session.anchor;
         let query = session.query.clone();
+        let filter = session.filter;
         let sources = self.canvas_search_sources();
         let mut signature = DefaultHasher::new();
         query.hash(&mut signature);
+        filter.hash(&mut signature);
         for item in &sources {
             item.id.hash(&mut signature);
             item.title.hash(&mut signature);
@@ -151,6 +192,9 @@ impl App {
         let results: Vec<_> = sources
             .iter()
             .filter(|item| {
+                if filter == super::Filter::Widgets && item.kind != "widget" {
+                    return false;
+                }
                 if item.kind == "window" && query.trim().is_empty() {
                     return false;
                 }
@@ -217,7 +261,7 @@ impl App {
                 continue;
             }
             let (from, from_opacity) = previous.map(|p| p.current(now)).unwrap_or(
-                if item.kind == "control" || item.kind == "tool" {
+                if matches!(item.kind, "control" | "tool" | "widget" | "app") {
                     (to, 0.)
                 } else {
                     (item.natural, 1.)

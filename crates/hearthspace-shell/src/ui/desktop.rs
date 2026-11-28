@@ -11,6 +11,8 @@ use crate::desktop_items::{DesktopItem, DesktopItemKind};
 use super::{desktop_item, state::ShellState};
 
 mod artwork;
+mod pinned_apps;
+pub(super) use pinned_apps::reconcile as reconcile_pinned_apps;
 pub(in crate::ui) mod context;
 mod context_actions;
 mod context_items;
@@ -34,6 +36,7 @@ pub(super) struct State {
     artwork: artwork::State,
     menu: context::State,
     items: Vec<Item>,
+    pinned_apps: Vec<Item>,
     snapshot: events::Snapshot,
     requests: Option<mpsc::Sender<task::Request>>,
     refresh: Arc<Notify>,
@@ -68,6 +71,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
         .desktop
         .items
         .iter()
+        .chain(&state.desktop.pinned_apps)
         .map(|item| {
             let id = item.content.id.clone();
             let content = desktop_item::TileContent {

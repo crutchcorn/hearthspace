@@ -273,15 +273,30 @@ log-a11y-tree
 
 `layout-tool` opens Change layout on the pointer's output. Editor actions use
 `layout-command JSON` with the current `session` and `output` from `layout-status`,
-an `action`, and a `target` such as `{"kind":"widget","id":"wifi"}`.
+an `action`, and a `target` with the selected widget's opaque `id`. Find the
+widget by `kind` in status, then use `{"kind":"widget","id":"INSTANCE_ID"}`
+with that returned ID. Kinds such as `wifi` are catalog names, not instance IDs.
 For example, `place` accepts `{"surface":"canvas"}` or
 `{"surface":"frame","edge":"right","position":0.5}` in `placement`.
 Session IDs prevent a stale native editor from applying actions to a new session.
+Widget status includes `kind`, opaque instance `id`, and `mapped`. A registered
+copy can precede its native surface; wait for `mapped` before pointer interaction.
+Several instances can share a kind. Removing one retires its ID, and adding the
+same kind creates a new ID, including after saving an empty widget collection.
 `frame-reveal WINDOW_ID` reveals an attached live window without panning.
 `frame-settings {"restore_tools":true}` restores Canvas tools to their default
 frame placement. These are private compositor-control commands, not public
 Wayland protocols. Use real pointer/keyboard input as well as commands when
 validating the [layout interaction](SHELL.md#change-layout).
+
+`test_widgets_headless.py` exercises the real shell's context menu, widgets-only
+picker, ordinary search, independent copies, canvas launcher, layout drag onto
+the frame, app launch, removal, and re-addition. It uses an empty Desktop folder
+and checks that the installed catalog does not generate permanent icons. The
+compact-output case removes every widget, recovers through the keyboard canvas
+menu, and opens Apps List from a standalone launcher with no dock present. The
+Rust `widget_instances` cases cover stale context generations and removal during
+a held drag; common-domain tests cover migration and persistence.
 
 Keyboard commands use Linux evdev key codes at the socket boundary. The
 compositor applies Smithay's expected XKB offset internally. Pointer button

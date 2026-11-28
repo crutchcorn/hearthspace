@@ -1,5 +1,6 @@
 //! Group presentation moves live content without changing its canonical home until release.
 use super::*;
+use crate::frame_widgets;
 
 fn pin_group(
     compositor: &HeadlessCompositor,
@@ -76,7 +77,8 @@ fn frame_layout_inspector_releases_group_members_to_both_canvas_layers_at_visibl
             surface
         );
         assert_eq!(
-            released["outputs"][0]["layout"]["placements"]["widget:wifi"]["surface"],
+            released["outputs"][0]["layout"]["placements"]
+                [format!("widget:{}", frame_widgets::id(&compositor, "wifi"))]["surface"],
             surface
         );
         let moved = window(&compositor, "group-member");

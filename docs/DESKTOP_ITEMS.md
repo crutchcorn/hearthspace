@@ -1,9 +1,12 @@
 # Desktop items
 
-Every installed application in Apps List also has a permanent desktop shortcut.
-Favorites remain a separate choice: removing a favorite does not remove its
-desktop icon. Files and folders come from the user's configured XDG desktop
-directory. These are the user's real files and installed applications.
+The default canvas shows files and folders from the user's configured XDG
+Desktop directory, including shortcuts placed there. Installed applications
+remain in Apps List, search, and favorites; discovering or installing an app
+does not create a canvas icon. Existing shortcuts explicitly placed with Change
+layout retain their placement; automatic catalog shortcuts are hidden. App
+results acquire temporary search cards instead of permanent desktop surfaces.
+See [Widgets](WIDGETS.md) for addable desktop tools.
 
 ## Select and move
 
@@ -81,7 +84,7 @@ unscoped bus activation. Directory and catalog changes are refreshed on a worker
 GIO-validated GNOME thumbnails and reads embedded FLAC front covers when no
 usable thumbnail exists. Files without usable artwork use their themed MIME
 icons. Opening Settings and changing themes reuse the retained artwork.
-The desktop supports up to 4,096 combined items; exceeding that limit reports
+The desktop supports up to 4,096 folder items; exceeding that limit reports
 an error in Apps List while keeping its complete application catalog available.
 
 Application artwork is shared by desktop tiles, Apps List, the dock, and matched

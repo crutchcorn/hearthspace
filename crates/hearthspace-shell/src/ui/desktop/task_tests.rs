@@ -128,7 +128,7 @@ fn rejected_authorization_does_not_write_favorites() {
 }
 
 #[test]
-fn unavailable_desktop_directory_preserves_files_and_initial_application_shortcuts() {
+fn unavailable_desktop_directory_preserves_files_without_generating_app_shortcuts() {
     let directory = tempfile::tempdir().unwrap();
     let data = directory.path().join("share");
     std::fs::create_dir_all(data.join("applications")).unwrap();
@@ -147,14 +147,14 @@ fn unavailable_desktop_directory_preserves_files_and_initial_application_shortcu
     };
     let unavailable = directory.path().join("not-directory");
     std::fs::write(&unavailable, "content").unwrap();
-    let (_, items, error) = discover(
+    let (catalog, items, error) = discover(
         catalog,
         Some(&unavailable),
         std::slice::from_ref(&previous_file),
     );
     assert!(error.is_some());
-    assert_eq!(items[0], previous_file);
-    assert_eq!(items[1].id, "app:editor.desktop");
+    assert_eq!(items, [previous_file]);
+    assert!(catalog.app_by_id("editor.desktop").is_some());
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn desktop_overflow_bounds_surfaces_and_keeps_the_complete_launcher_catalog() {
     let error = error.unwrap();
     assert!(error.contains(&format!(
         "Showing {MAX_DESKTOP_ITEMS} of {}",
-        MAX_DESKTOP_ITEMS + 2
+        MAX_DESKTOP_ITEMS + 1
     )));
     assert!(error.contains("Apps List"));
 }

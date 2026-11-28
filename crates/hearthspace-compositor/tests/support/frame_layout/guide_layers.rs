@@ -1,6 +1,7 @@
 //! Frame tools occlude guides and drop highlights while keeping their own outline.
 use super::*;
-use hearthspace_common::frame_layout::{frame_group_app_id, frame_widget_app_id};
+use crate::frame_widgets;
+use hearthspace_common::frame_layout::frame_group_app_id;
 
 const NOTICE: [u8; 4] = [220, 80, 35, 255];
 const BACKING: [u8; 4] = [40, 180, 80, 255];
@@ -41,13 +42,13 @@ fn frame_guides_and_drop_highlights_stay_under_controls_and_group_material() {
         .to_owned();
     let mut client = connect(&compositor);
     client.add(
-        frame_widget_app_id(Some(&output), "notifications"),
+        frame_widgets::app_id(&compositor, Some(&output), "notifications"),
         (300, 54),
         (0, 0),
         NOTICE,
     );
     client.add(
-        frame_widget_app_id(Some(&output), "tools"),
+        frame_widgets::app_id(&compositor, Some(&output), "tools"),
         (246, 54),
         (0, 0),
         [45, 40, 180, 255],
@@ -71,7 +72,7 @@ fn frame_guides_and_drop_highlights_stay_under_controls_and_group_material() {
     command(
         &compositor,
         "select",
-        json!({"kind":"widget","id":"notifications"}),
+        frame_widgets::target(&compositor, "notifications"),
         Value::Null,
     );
     let (pixels, width, stride) = pixels(&compositor);

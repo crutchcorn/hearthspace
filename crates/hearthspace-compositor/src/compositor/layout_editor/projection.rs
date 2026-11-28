@@ -59,21 +59,23 @@ impl App {
         let id = super::window_app_id(&self.windows[index].surface)?;
         let target = self.layout_editor.popup_anchors.get(&id)?;
         let placed = self.frame_placed(target)?;
+        let mut anchor = placed.rect;
+        if let Some(source) = self.target_window_index(target) {
+            let peek = self.canvas_peek_offset(source);
+            anchor.x += peek.x;
+            anchor.y += peek.y;
+        }
         let view = self.frame_output_rect(&target.output)?;
         let size = self.window_geometry_size(index);
         let width = f64::from(size.w);
         let height = f64::from(size.h);
         let gap = 12.;
         let (mut x, mut y) = match placed.placement.edge() {
-            Some(frame_layout::FrameEdge::Top) => {
-                (placed.rect.x, placed.rect.y + placed.rect.height + gap)
-            }
-            Some(frame_layout::FrameEdge::Bottom) => (placed.rect.x, placed.rect.y - height - gap),
-            Some(frame_layout::FrameEdge::Left) => {
-                (placed.rect.x + placed.rect.width + gap, placed.rect.y)
-            }
-            Some(frame_layout::FrameEdge::Right) => (placed.rect.x - width - gap, placed.rect.y),
-            None => (placed.rect.x, placed.rect.y + placed.rect.height + gap),
+            Some(frame_layout::FrameEdge::Top) => (anchor.x, anchor.y + anchor.height + gap),
+            Some(frame_layout::FrameEdge::Bottom) => (anchor.x, anchor.y - height - gap),
+            Some(frame_layout::FrameEdge::Left) => (anchor.x + anchor.width + gap, anchor.y),
+            Some(frame_layout::FrameEdge::Right) => (anchor.x - width - gap, anchor.y),
+            None => (anchor.x, anchor.y + anchor.height + gap),
         };
         x = x.clamp(
             view.x + 12.,

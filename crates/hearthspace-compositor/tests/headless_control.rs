@@ -58,6 +58,9 @@ mod device_controls;
 #[path = "support/frame_layout.rs"]
 mod frame_layout;
 #[cfg(feature = "test-apps")]
+#[path = "support/frame_widgets.rs"]
+mod frame_widgets;
+#[cfg(feature = "test-apps")]
 #[path = "support/grid_snapping.rs"]
 mod grid_snapping;
 #[cfg(feature = "test-apps")]
@@ -120,6 +123,9 @@ mod shell_panels;
 #[cfg(feature = "test-apps")]
 #[path = "support/titlebar_controls.rs"]
 mod titlebar_controls;
+#[cfg(feature = "test-apps")]
+#[path = "support/widget_instances.rs"]
+mod widget_instances;
 #[path = "support/window_bounds.rs"]
 mod window_bounds;
 #[cfg(feature = "test-apps")]

@@ -2,8 +2,11 @@
 use crate::desktop_items::{DesktopItem, DesktopItemKind};
 use serde_json::json;
 
-pub(super) fn commands(items: &[DesktopItem]) -> Vec<String> {
-    let entries: Vec<_> = items
+pub(super) fn commands(
+    items: &[DesktopItem],
+    catalog: &hearthspace_desktop::app_catalog::AppCatalog,
+) -> Vec<String> {
+    let mut entries: Vec<_> = items
         .iter()
         .map(|item| {
             let kind = match &item.kind {
@@ -25,6 +28,33 @@ pub(super) fn commands(items: &[DesktopItem]) -> Vec<String> {
             json!({"id":item.id,"title":title,"search_text":format!("{title} {kind}")})
         })
         .collect();
+    // Catalog results have search-only surfaces; they never register desktop icons.
+    entries.extend(
+        catalog
+            .apps()
+            .iter()
+            .filter(|app| {
+                app.id.len() <= 1020 && crate::ui::app_context::validate_app_id(&app.id).is_ok()
+            })
+            .take(4096)
+            .map(|app| {
+                let title = app
+                    .name
+                    .chars()
+                    .map(|c| if c.is_control() { ' ' } else { c })
+                    .take(256)
+                    .collect::<String>();
+                let generic = app
+                    .generic_name
+                    .as_deref()
+                    .unwrap_or("")
+                    .chars()
+                    .take(256)
+                    .collect::<String>();
+                json!({"id":format!("app:{}", app.id),"title":title,
+            "search_text":format!("{title} {generic} app application")})
+            }),
+    );
     let mut result = Vec::new();
     let mut offset = 0;
     while offset < entries.len() {
@@ -67,7 +97,7 @@ mod tests {
                 },
             })
             .collect();
-        let commands = commands(&items);
+        let commands = commands(&items, &Default::default());
         let mut count = 0;
         for command in commands {
             assert!(command.len() < hearthspace_ipc::transport::MAX_REQUEST_BYTES);

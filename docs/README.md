@@ -24,6 +24,7 @@ maintained behavior. The [roadmap](ROADMAP.md) covers remaining work;
 
 ## Canvas and shell
 
+- [Widgets, canvas, and frame](WIDGETS.md)
 - [Shell and frame placement](SHELL.md)
 - [Window management](WINDOW_MANAGEMENT.md)
 - [Window groups](WINDOW_GROUPS.md)

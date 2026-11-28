@@ -20,6 +20,38 @@ Keep detailed captures and logs with the issue or test artifact. Use this page
 as the single inventory of named test systems; feature guides describe how to
 repeat the checks.
 
+## Canvas widgets in Parallels, 2026-11-28
+
+The debug runtime from `010bcf6` ran on aarch64 kernel `7.0.0-44-generic`,
+virtio-gpu PCI `1af4:1050`, Mesa `26.0.8-1ubuntu0.3`, and renderer
+`virgl (Apple M4 Max (Compat))`. One Virtual-1 output ran at 1024×768, scale 1.
+An isolated native VT session used synthetic compositor pointer/keyboard input
+and the private accessibility bus.
+
+The workflow added widgets through the filtered picker and ordinary search,
+opened a canvas launcher, dragged the same instance onto the frame, launched
+Foot, moved the launcher back, removed it, and re-added a distinct instance.
+Adding a clock preserved the starter copy. Removing every widget still allowed
+keyboard recovery through the canvas menu and Apps List through a standalone
+launcher with no dock. A canvas launcher also worked at 150% canvas zoom.
+Light and dark captures showed readable controls, search focus, and selected
+results. Separate headless acceptance covered the empty-frame keyboard workflow
+at 800×600. These runs do not extend earlier host-resize or sleep coverage.
+
+Rust formatting, Ruff, workspace Clippy, the all-target build, and all 2,715 Rust
+tests passed; 26 Rust tests remained ignored. The Python run completed 732 cases
+with one failure in the existing Apps List empty-state sizing check. Its measured
+bottom gap was 140 logical pixels against a 120-pixel limit, matching the earlier
+baseline failure. Both new widget workflows passed. Dependency checks passed
+with warnings; the failing sizing assertion was retained.
+
+Cleanup restored tty2, retained the original login sessions, stopped owned
+processes, and removed the private runtime. The first stop reported a busy
+resource; the exact idempotent retry verified complete cleanup. Evidence,
+including binary hashes, captures, scripts, failed check attempts, and recovery
+records, is retained under
+`~/.local/state/hearthspace-investigations/20261128-canvas-widgets/`.
+
 ## JPEG wallpapers in Parallels, 2026-11-11
 
 The debug runtime from `88bbe83` ran in the MacBook guest above on aarch64 kernel

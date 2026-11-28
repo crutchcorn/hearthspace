@@ -8,23 +8,33 @@ Choose **Search canvas** from the first Canvas tools button, then click empty
 canvas to open the field there. **❖ + K** opens it near the upper center of
 the active output. Applications keep their own slash and Ctrl+K input.
 
-Type to find desktop app shortcuts, files, folders, open windows, system controls,
-and the available canvas tools together. Every query word must match, in any
-order and without case sensitivity. File and folder results come from the XDG
+Type to find installed apps, files, folders, open windows, widgets, system
+controls, and canvas tools together. Installed apps have search cards without
+permanent canvas icons. Every query word must match, in any order and without
+case sensitivity. File and folder results come from the XDG
 Desktop directory; search indexes their names and kinds, never their contents.
-An empty query shows desktop items, controls and tools. Windows join the results
-once the query contains text, ordered from front to back after desktop items.
+An empty query shows desktop items, installed apps, widgets, controls and tools.
+Windows join the results once the query contains text, ordered from front to back
+after desktop items.
 
 Up and Down cycle through results. Enter or a click activates the selected item:
 
-- App shortcuts launch an app; files and folders use their existing default opener.
+- App results launch an app; files and folders use their existing default opener.
 - Window previews focus the existing window and center it on the search output;
   frame-attached windows open at their existing edge.
 - System controls open their existing dropdown or Apps List.
 - Canvas tools select their mode or open the canvas map.
+- **Add …** widget results create a new canvas copy, even if that kind is already
+  present elsewhere. The copy uses the search's original canvas location.
 
-Escape, the close button, or an empty-canvas click dismisses search. Search stays
-the selected tool, so another background click opens a fresh query. Choosing
+Right-click empty canvas and choose **Add Widget…** to open this same interface
+with only widget add results. Its scope is internal session state: the editable
+query starts empty, and clearing it keeps the widgets-only scope. Closing this
+picker restores the prior canvas tool. A regular search includes all result kinds.
+See [Widgets](WIDGETS.md) for placement, removal, and instance identity.
+
+Escape, the close button, or an empty-canvas click dismisses search. In regular
+search, Search stays the selected tool, so another background click opens a fresh query. Choosing
 desktop selection, Pan canvas, or window-group selection leaves Search mode.
 Apps List keeps its separate Meta-tap and Super+Space shortcuts.
 
@@ -65,7 +75,7 @@ session or new service.
 `hearthspace-common::canvas_search` owns the result layout and easing math.
 The compositor's `canvas_search` module owns sessions, matching, selection,
 temporary transforms, input isolation and window activation. The shell's
-`ui/canvas_search` module owns the native field and live control previews.
+`ui/canvas_search` module owns the native field, app cards, and live control previews.
 No model or handwriting runtime is included.
 
 Control preview surfaces stay allocated across searches to avoid repeated

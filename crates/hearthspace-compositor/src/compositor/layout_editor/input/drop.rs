@@ -228,8 +228,7 @@ impl App {
             .map(|p| p.target)
     }
     fn finish_canvas_widget_drop(&mut self, drag: &Drag) {
-        let original_vertical =
-            super::super::turns_as_toolbar(&drag.target.target) && drag.original_vertical;
+        let original_vertical = self.turns_as_toolbar(&drag.target) && drag.original_vertical;
         let (width, height) = self
             .frame_output_rect(&drag.target.output)
             .map(|view| self.layout_target_size(&drag.target, false, view))

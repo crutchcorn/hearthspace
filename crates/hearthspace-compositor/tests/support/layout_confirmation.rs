@@ -5,6 +5,7 @@ use super::{
     shell_panels::{click, connect},
     *,
 };
+use crate::frame_widgets;
 use hearthspace_common::frame_layout::{
     FrameLayout, LayoutTarget, TargetKind, layout_confirm_app_id, layout_editor_app_id,
 };
@@ -75,8 +76,8 @@ fn pinned_close_is_modal_outside_editor_cancel_keeps_pin_and_confirm_preserves_g
     let app = "dev.hearthspace.PinClose";
     let encoded: String = app.bytes().map(|byte| format!("{byte:02x}")).collect();
     let window = LayoutTarget::new(TargetKind::Window, format!("saved-{encoded}-0"));
-    let apps = LayoutTarget::widget("apps");
     let mut layout = FrameLayout::default();
+    let apps = frame_widgets::model_target(&layout, "apps");
     let group = layout.merge(&window, &apps, false).unwrap();
     saved_layout(&path, &layout);
     let mut compositor = HeadlessCompositor::spawn_with_layout("1280x800", Some(&path));
@@ -165,8 +166,8 @@ fn protected_tools_group_warning_cancels_without_changes_and_opens_system_settin
     let mut layout = FrameLayout::default();
     let group = layout
         .merge(
-            &LayoutTarget::widget("tools"),
-            &LayoutTarget::widget("apps"),
+            &frame_widgets::model_target(&layout, "tools"),
+            &frame_widgets::model_target(&layout, "apps"),
             false,
         )
         .unwrap();

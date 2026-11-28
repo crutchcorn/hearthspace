@@ -42,7 +42,7 @@ pub(super) fn size(
             }
         }
         "tray" => match crate::ui::tray_state::visible(&state.tray.snapshot).count() {
-            0 => 0.0,
+            0 => 44.0,
             // A toolbar's along-axis extent must not be shorter than its lane;
             // the compositor normalizes that pair when changing orientation.
             count => (38.0 * count as f64 - 4.0).max(44.0),
@@ -83,6 +83,17 @@ pub(super) fn content(
     format: ClockDateFormat,
     chain: &focus::Chain,
 ) -> Box<AnyWidgetView<ShellState>> {
+    let instance = id;
+    let Some(id) = state
+        .frame_layout
+        .snapshot
+        .outputs
+        .iter()
+        .find(|layout| layout.output == output.key())
+        .and_then(|layout| layout.layout.widget_kind(instance))
+    else {
+        return label("").boxed();
+    };
     if id == "tools" {
         return if super::tool_menu::compact(state, output.key()) {
             super::tool_menu::trigger(state, output, chain).boxed()
@@ -90,11 +101,25 @@ pub(super) fn content(
             tools(state, output, vertical, chain).boxed()
         };
     }
+    if id == "launcher" {
+        let key = output.key().to_owned();
+        return focus::item(
+            crate::ui::icons::icon_button(
+                crate::ui::icons::Icon::Apps,
+                "Apps List",
+                output.show_search,
+                move |state| state.toggle_search(&key),
+            ),
+            chain,
+            0,
+        )
+        .boxed();
+    }
     if id == "apps" {
-        return apps(state, output, vertical, chain).boxed();
+        return apps(state, output, instance, vertical, chain).boxed();
     }
     if id == "tray" {
-        return super::tray::content(state, output, vertical, chain);
+        return super::tray::content(state, output, instance, vertical, chain);
     }
     let count = state
         .notifications
@@ -250,12 +275,13 @@ pub(super) fn layout_button(state: &ShellState) -> impl WidgetView<ShellState> +
 fn apps(
     state: &ShellState,
     output: &ShellOutputInstance,
+    instance: &str,
     vertical: bool,
     chain: &focus::Chain,
 ) -> impl WidgetView<ShellState> + use<> {
     let key = output.key().to_owned();
     let desired = crate::ui::dock::desired_width(state);
-    let dock_width = super::dock_width(state, output.key()).unwrap_or(desired);
+    let dock_width = super::dock_width(state, output.key(), instance).unwrap_or(desired);
     flex_row((
         (desired > 0.0)
             .then(|| crate::ui::dock::frame_view(state, output, dock_width, vertical, chain)),

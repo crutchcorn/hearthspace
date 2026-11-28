@@ -1,6 +1,7 @@
 //! Canvas maximization keeps stable reference clearances as frame controls change.
 use super::*;
-use hearthspace_common::frame_layout::{frame_group_app_id, frame_widget_app_id};
+use crate::frame_widgets;
+use hearthspace_common::frame_layout::frame_group_app_id;
 
 fn maximized_bounds(compositor: &HeadlessCompositor) {
     let window = window(compositor, "frame-work-area");
@@ -30,14 +31,14 @@ fn frame_layout_changes_preserve_the_maximized_canvas_bounds() {
     maximized_bounds(&compositor);
 
     client.add(
-        frame_widget_app_id(Some("unplugged"), "wifi"),
+        frame_widgets::app_id(&compositor, Some("unplugged"), "wifi"),
         (44, 44),
         (0, 0),
         COLOR,
     );
     maximized_bounds(&compositor);
     let wifi = client.add(
-        frame_widget_app_id(Some(&output), "wifi"),
+        frame_widgets::app_id(&compositor, Some(&output), "wifi"),
         (44, 44),
         (0, 0),
         COLOR,
@@ -50,14 +51,14 @@ fn frame_layout_changes_preserve_the_maximized_canvas_bounds() {
     command(
         &compositor,
         "place",
-        json!({"kind":"widget","id":"wifi"}),
+        frame_widgets::target(&compositor, "wifi"),
         json!({"surface":"canvas","x":350.,"y":250.}),
     );
     maximized_bounds(&compositor);
     command(
         &compositor,
         "remove",
-        json!({"kind":"widget","id":"wifi"}),
+        frame_widgets::target(&compositor, "wifi"),
         Value::Null,
     );
     command(&compositor, "done", Value::Null, Value::Null);

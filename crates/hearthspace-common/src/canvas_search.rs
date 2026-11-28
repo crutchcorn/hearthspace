@@ -91,3 +91,14 @@ pub fn park(item: Rect, view: Rect) -> Placement {
 mod switcher_tests;
 #[cfg(test)]
 mod tests;
+
+/// Category scope is separate from editable query text; the widget picker hides it.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Filter {
+    #[default]
+    All,
+    Widgets,
+}

@@ -2,15 +2,14 @@
 //! MapClient supplies real Wayland buffers; shell label rendering is covered separately.
 use super::super::canvas_map_client::MapClient;
 use super::*;
-use hearthspace_common::frame_layout::{
-    FrameEdge, FrameLayout, LayoutTarget, ObjectPlacement, WIDGETS, frame_widget_app_id,
-};
+use crate::frame_widgets;
+use hearthspace_common::frame_layout::{FrameEdge, LayoutTarget, ObjectPlacement};
 
 struct Fixture {
     compositor: HeadlessCompositor,
     client: MapClient,
     surface: usize,
-    id: &'static str,
+    id: String,
     _saved: tempfile::TempDir,
 }
 
@@ -18,19 +17,15 @@ impl Fixture {
     fn start(id: &'static str, width: i32, expanded: bool, motion: bool) -> Self {
         let saved = tempfile::tempdir().unwrap();
         let path = saved.path().join("layout.json");
-        let mut model = FrameLayout {
-            allow_hide_tools: true,
-            ..Default::default()
-        };
-        // Only this control participates: another toolbar cannot keep animating for it.
-        for widget in WIDGETS {
-            model.set_placement(&LayoutTarget::widget(*widget), ObjectPlacement::Hidden);
-        }
+        let mut model = frame_widgets::only(&[id]);
+        let identity = model.widget_id(id).unwrap();
         model.set_placement(
-            &LayoutTarget::widget(id),
+            &LayoutTarget::widget(&identity),
             ObjectPlacement::frame(FrameEdge::Top, 0.5),
         );
-        model.expanded.insert(id.into(), expanded);
+        if model.is_expanded(&identity) != expanded {
+            model.toggle_expanded(&identity);
+        }
         model.validate().unwrap();
         std::fs::write(
             &path,
@@ -50,7 +45,7 @@ impl Fixture {
             .to_owned();
         let mut client = connect(&compositor);
         let surface = client.add(
-            frame_widget_app_id(Some(&output), id),
+            frame_widgets::app_id(&compositor, Some(&output), id),
             (width, 54),
             (0, 0),
             COLOR,
@@ -60,7 +55,7 @@ impl Fixture {
             compositor,
             client,
             surface,
-            id,
+            id: identity,
             _saved: saved,
         }
     }
@@ -90,7 +85,7 @@ impl Fixture {
 
     fn placement(&self) -> Value {
         layout(&self.compositor)["outputs"][0]["layout"]["placements"]
-            [LayoutTarget::widget(self.id).key()]
+            [LayoutTarget::widget(&self.id).key()]
         .clone()
     }
 

@@ -1,9 +1,7 @@
 //! Reusable native content is hosted in one persistent surface per layout part.
 use super::{focus, widget_key, widgets};
 use crate::ui::{popup, state::ShellState};
-use hearthspace_common::frame_layout::{
-    ObjectPlacement, WIDGETS, frame_widget_app_id, widget_title,
-};
+use hearthspace_common::frame_layout::{ObjectPlacement, frame_widget_app_id, widget_title};
 use xilem::{
     WidgetView, WindowView,
     dpi::LogicalSize,
@@ -22,37 +20,40 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
         else {
             continue;
         };
-        for id in WIDGETS {
-            let key = widget_key(&layout.output, id);
+        for instance in layout.layout.widgets.instances() {
+            let identity = instance.id().to_string();
+            let id = instance.kind().key();
+            let key = widget_key(&layout.output, &identity);
             let Some(window) = state.frame_layout.windows.get(&key).copied() else {
                 continue;
             };
             let Some(chain) = state.frame_layout.chains.get(&key) else {
                 continue;
             };
-            let target = hearthspace_common::frame_layout::LayoutTarget::widget(*id);
-            let part = layout.widgets.iter().find(|part| part.id == *id);
+            let target = hearthspace_common::frame_layout::LayoutTarget::widget(&identity);
+            let part = layout.widgets.iter().find(|part| part.id == identity);
             let grouped =
                 layout.layout.group_for(&target).is_some() || part.is_some_and(|part| part.merged);
             let vertical = part.is_some_and(|part| part.orientation == "vertical");
-            let expanded = layout.layout.is_expanded(id);
+            let expanded = layout.layout.is_expanded(&identity);
             let available = state.frame_layout.visible
                 && layout.layout.placement(&target) != ObjectPlacement::Hidden
-                && (*id != "battery" || state.battery.is_some())
-                && (*id != "tray"
-                    || crate::ui::tray_state::visible(&state.tray.snapshot)
-                        .next()
-                        .is_some());
+                && (!instance.preferences().hide_when_unavailable
+                    || ((id != "battery" || state.battery.is_some())
+                        && (id != "tray"
+                            || crate::ui::tray_state::visible(&state.tray.snapshot)
+                                .next()
+                                .is_some())));
             let mut size = widgets::size(
                 state,
                 id,
                 vertical,
                 expanded,
                 grouped,
-                layout.layout.clock_date_format,
+                layout.layout.widget_clock_date_format(&identity),
                 layout.compact,
             );
-            if *id == "apps"
+            if id == "apps"
                 && let Some(part) = part.filter(|part| part.merged)
             {
                 if vertical {
@@ -61,16 +62,16 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
                     size.0 = part.rect.width.max(44.0);
                 }
             }
-            if *id == "tray" && !grouped {
+            if id == "tray" && !grouped {
                 size = super::tray::size(layout, vertical, size);
             }
             let content = widgets::content(
                 state,
                 output,
-                id,
+                &identity,
                 vertical,
                 expanded,
-                layout.layout.clock_date_format,
+                layout.layout.widget_clock_date_format(&identity),
                 chain,
             );
             let content = sized_box(content).padding(if grouped { 0.0 } else { 5.0 }.px());
@@ -95,7 +96,7 @@ pub(super) fn windows(state: &ShellState) -> Vec<WindowView<ShellState>> {
             windows.push(popup::window(
                 window,
                 widget_title(id),
-                frame_widget_app_id(output.output_name.as_deref(), id),
+                frame_widget_app_id(output.output_name.as_deref(), &identity),
                 LogicalSize::new(size.0, size.1),
                 view,
                 |_| {},

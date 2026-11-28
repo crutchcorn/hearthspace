@@ -33,7 +33,7 @@ impl App {
             || old_placement.edge().is_some_and(|edge| edge.is_vertical()),
             |p| p.vertical,
         );
-        let turning = super::turns_as_toolbar(&target.target)
+        let turning = self.turns_as_toolbar(target)
             && old_vertical != placement.edge().is_some_and(|edge| edge.is_vertical());
         let animate_turn = turning || self.layout_target_turn_active(target);
         if matches!(target.target.kind, TargetKind::Window | TargetKind::Item)

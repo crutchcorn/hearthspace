@@ -14,6 +14,7 @@ use crate::ui::{popup::PopupKind, state::ShellState};
 pub(super) struct Intent {
     pub key: String,
     pub popup: Popup,
+    origin: Option<hearthspace_ipc::frame_layout::Selection>,
     epoch: u64,
     current: Arc<AtomicBool>,
     expires: Arc<OnceLock<Instant>>,
@@ -48,11 +49,18 @@ impl Intent {
 pub(in crate::ui) struct Intents(Option<Intent>);
 
 impl Intents {
-    pub(super) fn begin(&mut self, key: String, popup: Popup, epoch: u64) -> Intent {
+    pub(super) fn begin(
+        &mut self,
+        key: String,
+        popup: Popup,
+        epoch: u64,
+        origin: Option<hearthspace_ipc::frame_layout::Selection>,
+    ) -> Intent {
         self.cancel();
         let intent = Intent {
             key,
             popup,
+            origin,
             epoch,
             current: Arc::new(AtomicBool::new(true)),
             expires: Arc::new(OnceLock::new()),
@@ -61,11 +69,18 @@ impl Intents {
         intent
     }
 
-    pub(super) fn reverse(&mut self, key: &str, popup: &Popup, epoch: u64) -> Option<Popup> {
+    pub(super) fn reverse(
+        &mut self,
+        key: &str,
+        popup: &Popup,
+        epoch: u64,
+        origin: Option<&hearthspace_ipc::frame_layout::Selection>,
+    ) -> Option<Popup> {
         if self.0.as_ref().is_some_and(|intent| {
             intent.is_current()
                 && intent.epoch == epoch
                 && intent.key == key
+                && intent.origin.as_ref() == origin
                 && popup.toggles()
                 && intent.popup.same_destination(popup)
         }) {
@@ -131,6 +146,15 @@ impl Opening {
                 .outputs
                 .iter()
                 .any(|output| output.output == self.intent.key)
+            && self.intent.origin.as_ref().is_none_or(|origin| {
+                snapshot.outputs.iter().any(|output| {
+                    output.output == origin.output
+                        && output
+                            .widgets
+                            .iter()
+                            .any(|widget| widget.id == origin.target.id && !widget.hidden)
+                })
+            })
     }
 
     pub fn deliver(self, state: &mut ShellState, now: Instant) {
@@ -146,6 +170,7 @@ impl Opening {
             "frame layout popup update received");
         // A cloned/queued update can consume this intent at most once.
         if eligible && self.intent.current.swap(false, Ordering::AcqRel) {
+            state.frame_layout.popup_origin = self.intent.origin;
             super::popups::open(state, &self.intent.key, self.intent.popup);
         } else {
             self.intent.cancel();

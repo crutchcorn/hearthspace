@@ -3,12 +3,13 @@ use super::{
     App, ManagedWindowKind,
     windows::{window_app_id, window_title},
 };
-use hearthspace_common::canvas_search::{Point, Rect};
+use hearthspace_common::canvas_search::{Filter, Point, Rect};
 use std::{
     collections::{HashMap, VecDeque},
     time::Instant,
 };
 
+mod activation;
 mod input;
 mod motion;
 mod protocol;
@@ -34,6 +35,9 @@ struct Session {
     output: Option<String>,
     view: Rect,
     anchor: Point,
+    add_at: Point,
+    filter: Filter,
+    restore_tool: Option<hearthspace_ipc::command::CanvasTool>,
     query: String,
     field: Rect,
     above: bool,
@@ -149,10 +153,22 @@ impl App {
         anchor: Option<Point>,
         output: Option<String>,
     ) -> Result<(), String> {
+        self.open_canvas_search_filtered(anchor, output, Filter::All)
+    }
+
+    pub(in crate::compositor) fn open_canvas_search_filtered(
+        &mut self,
+        anchor: Option<Point>,
+        output: Option<String>,
+        filter: Filter,
+    ) -> Result<(), String> {
         if self.canvas_search_active() {
             self.close_canvas_search(true);
         }
         self.check_canvas_tool_available()?;
+        let restore_tool = (filter == Filter::Widgets)
+            .then(|| self.selected_canvas_tool())
+            .flatten();
         self.disarm_canvas_pan();
         self.leave_window_focus_views();
         let outputs = self.capture_outputs();
@@ -181,14 +197,26 @@ impl App {
         self.canvas_search.sequence = self.canvas_search.sequence.wrapping_add(1).max(1);
         let id = self.canvas_search.sequence;
         self.canvas_preview.owner = Some(super::canvas_preview::Owner::Search);
+        let anchor = anchor.unwrap_or(Point {
+            x: view.x + view.width / 2.,
+            y: view.y + view.height / 3.,
+        });
+        let canvas = crate::geometry::screen_to_canvas(
+            (anchor.x, anchor.y).into(),
+            self.viewport_offset,
+            self.viewport_scale,
+        );
         self.canvas_search.session = Some(Session {
             id,
+            filter,
+            restore_tool,
+            add_at: Point {
+                x: canvas.x,
+                y: canvas.y,
+            },
             output: output.clone(),
             view,
-            anchor: anchor.unwrap_or(Point {
-                x: view.x + view.width / 2.,
-                y: view.y + view.height / 3.,
-            }),
+            anchor,
             query: String::new(),
             field: Rect::default(),
             above: false,
@@ -217,6 +245,21 @@ impl App {
         );
         Ok(())
     }
+    pub(in crate::compositor) fn open_widget_picker(
+        &mut self,
+        anchor: Point,
+        output: String,
+        add_at: Point,
+    ) -> Result<(), String> {
+        self.open_canvas_search_filtered(Some(anchor), Some(output), Filter::Widgets)?;
+        self.canvas_search
+            .session
+            .as_mut()
+            .expect("active widget picker")
+            .add_at = add_at;
+        Ok(())
+    }
+
     pub(in crate::compositor) fn close_canvas_search(&mut self, restore: bool) {
         let Some(session) = self.canvas_search.session.take() else {
             return;
@@ -247,6 +290,14 @@ impl App {
             self.set_keyboard_focus_to_window(index, surface);
         }
         self.retarget_canvas_preview_exit(Some(session.view), false);
+        if session.filter == Filter::Widgets {
+            self.canvas_search.mode = false;
+            if self.navigation_available()
+                && let Some(tool) = session.restore_tool
+            {
+                let _ = self.select_canvas_tool(tool);
+            }
+        }
         self.canvas_search_changed();
     }
     pub(in crate::compositor) fn reset_canvas_search(&mut self) {
@@ -283,58 +334,5 @@ impl App {
         let next = (current as i64 + i64::from(step)).rem_euclid(s.results.len() as i64) as usize;
         s.selected = Some(s.results[next].id.clone());
         self.canvas_search_changed();
-    }
-    fn activate_canvas_search(&mut self, id: Option<String>) -> Result<(), String> {
-        let s = self
-            .canvas_search
-            .session
-            .as_ref()
-            .ok_or("canvas search is inactive")?;
-        let id = id
-            .or_else(|| s.selected.clone())
-            .ok_or("no search result selected")?;
-        let result = s
-            .results
-            .iter()
-            .find(|r| r.id == id)
-            .cloned()
-            .ok_or("search result is unavailable")?;
-        let output = s.output.clone();
-        let view = s.view;
-        self.close_canvas_search(false);
-        if result.kind == "window" {
-            let id = result.window.ok_or("window is unavailable")?;
-            let index = self
-                .windows
-                .iter()
-                .position(|w| w.id == id && w.mapped)
-                .ok_or("window is unavailable")?;
-            if self.frame_window_attached(index) {
-                let _ = self.reveal_frame_window(self.windows[index].id);
-            }
-            if !self.window_uses_output_coordinates(index) {
-                let output = smithay::utils::Rectangle::new(
-                    (view.x.round() as i32, view.y.round() as i32).into(),
-                    (view.width.round() as i32, view.height.round() as i32).into(),
-                );
-                self.viewport_animation = None;
-                self.viewport_offset = super::navigation::reveal_offset(
-                    self.window_canvas_rect(index),
-                    output,
-                    self.viewport_scale,
-                );
-            }
-            let index = self.raise_window(index);
-            if let Some(surface) = self.windows[index].surface.wl_surface() {
-                self.set_keyboard_focus_to_window(index, surface);
-            }
-            self.retarget_canvas_preview_exit(Some(view), true);
-        } else if result.kind == "item" {
-            self.desktop_action("activate", &id)?;
-        } else {
-            self.issue_canvas_search_action(id, output)?;
-        }
-        self.request_redraw();
-        Ok(())
     }
 }

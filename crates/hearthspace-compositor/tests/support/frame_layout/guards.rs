@@ -1,9 +1,8 @@
 //! Deferred shell actions and new presses respect the current input owner.
 use super::super::{canvas_map_client::MapClient, shell_panels::click};
 use super::*;
-use hearthspace_common::frame_layout::{
-    frame_widget_app_id, layout_confirm_app_id, layout_editor_app_id,
-};
+use crate::frame_widgets;
+use hearthspace_common::frame_layout::{layout_confirm_app_id, layout_editor_app_id};
 use std::os::unix::net::UnixDatagram;
 
 fn reject_queued_actions(
@@ -43,20 +42,20 @@ fn frame_layout_queued_external_actions_preserve_editor_modal_search_and_switche
         .unwrap()
         .to_owned();
     let clock = client.add(
-        frame_widget_app_id(Some(&output), "clock"),
+        frame_widgets::app_id(&compositor, Some(&output), "clock"),
         (94, 44),
         (0, 0),
         COLOR,
     );
     let wifi = client.add(
-        frame_widget_app_id(Some(&output), "wifi"),
+        frame_widgets::app_id(&compositor, Some(&output), "wifi"),
         (44, 44),
         (0, 0),
         COLOR,
     );
     let next = format!(
         "frame-focus-next {}",
-        json!({"output":output,"target":{"kind":"widget","id":"clock"},"reverse":false})
+        json!({"output":output,"target":frame_widgets::target(&compositor, "clock"),"reverse":false})
     );
     action(&compositor, &next);
     assert_eq!(client.focus(), Some(wifi));
@@ -64,7 +63,7 @@ fn frame_layout_queued_external_actions_preserve_editor_modal_search_and_switche
         &compositor,
         format!(
             "frame-focus-next {}",
-            json!({"output":output,"target":{"kind":"widget","id":"wifi"},"reverse":true})
+            json!({"output":output,"target":frame_widgets::target(&compositor, "wifi"),"reverse":true})
         ),
     );
     assert_eq!(client.focus(), Some(clock));
@@ -90,7 +89,7 @@ fn frame_layout_queued_external_actions_preserve_editor_modal_search_and_switche
     command(
         &compositor,
         "remove",
-        json!({"kind":"widget","id":"tools"}),
+        frame_widgets::target(&compositor, "tools"),
         Value::Null,
     );
     let modal = client.add(

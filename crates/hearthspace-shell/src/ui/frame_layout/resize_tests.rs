@@ -1,15 +1,16 @@
 use super::*;
+use crate::ui::frame_layout::fixture;
 
 #[test]
 fn inspector_content_shrinks_before_old_window_allocation_is_reconfigured() {
     let mut state = state();
     state.frame_layout.snapshot.selected = Some(Selection {
         output: "test".into(),
-        target: LayoutTarget::widget("clock"),
+        target: fixture::target(&state, "test", "clock"),
     });
     let mut ui = Ui::new(state, inspector, (260, 452));
     for (target, expected) in [
-        (LayoutTarget::widget("clock"), 452.0),
+        (fixture::target(&ui.state, "test", "clock"), 452.0),
         (LayoutTarget::new(TargetKind::Group, "system"), 156.0),
         (LayoutTarget::new(TargetKind::Item, "file:example"), 103.0),
     ] {

@@ -1,5 +1,5 @@
 //! Compose each toolbar as one object before its orientation transition.
-use super::{App, Target, turns_as_toolbar};
+use super::{App, Target};
 use crate::compositor::rendering::{HearthspaceRenderElement, TranslatedHearthspaceRenderElement};
 use hearthspace_common::frame_layout::{Point, Rect};
 use smithay::{
@@ -101,7 +101,7 @@ impl App {
         if self.layout_editing() && !self.layout_reduced_motion() {
             for placed in &self.layout_editor.placed {
                 if placed.group.is_none()
-                    && turns_as_toolbar(&placed.target.target)
+                    && self.turns_as_toolbar(&placed.target)
                     && !targets.contains(&placed.target)
                 {
                     targets.push(placed.target.clone());

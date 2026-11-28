@@ -23,7 +23,7 @@ use catalog::{ENTRIES, Entry};
 
 pub(super) fn registration() -> Vec<Value> {
     ENTRIES.iter().map(|entry| json!({"id":entry.id,"title":entry.title,
-        "search_text":format!("{} {} {}", entry.title, entry.keywords, if entry.id.starts_with("tool:") {"tool"} else {"widget system control"})})).collect()
+        "search_text":format!("{} {} {}", entry.title, entry.keywords, if entry.id.starts_with("widget:") {"add widget widgets canvas"} else if entry.id.starts_with("tool:") {"tool"} else {"system control"})})).collect()
 }
 
 pub(super) fn window_ids() -> BTreeMap<String, WindowId> {
@@ -113,6 +113,7 @@ fn detail(state: &ShellState, entry: &Entry) -> (Icon, Option<String>) {
     let mut glyph = entry.icon;
     let text =
         match entry.id {
+            id if id.starts_with("widget:") => Some("Add widget to canvas".into()),
             "control:notifications" => {
                 let count = state
                     .notifications
@@ -187,6 +188,10 @@ pub(super) fn activate(state: &mut ShellState, id: &str, output: Option<&str>) {
         return;
     }
     state.dismiss_panels();
+    if let Some(app_id) = id.strip_prefix("app:") {
+        crate::ui::launch::app(state, &key, app_id, output, false);
+        return;
+    }
     if let Some(tool) = tool(id) {
         crate::ui::frame_layout::select_tool(state, tool);
         return;

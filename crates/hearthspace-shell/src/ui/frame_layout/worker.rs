@@ -142,7 +142,7 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Snapshot, String> {
     }
     for output in &snapshot.outputs {
         output.layout.validate().map_err(str::to_string)?;
-        if output.widgets.len() > hearthspace_common::frame_layout::WIDGETS.len()
+        if output.widgets.len() > hearthspace_common::widgets::MAX_INSTANCES
             || output.groups.len() > 1024
         {
             return Err("Invalid frame layout parts".into());

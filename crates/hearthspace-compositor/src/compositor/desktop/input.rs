@@ -197,8 +197,8 @@ impl App {
                 && window.kind == ManagedWindowKind::ShellBar
                 && (self.shell_corner(index) == Some(hearthspace_common::ShellCorner::Apps)
                     || self
-                        .frame_widget_identity(index)
-                        .is_some_and(|(_, id)| id == "apps"))
+                        .widget_kind_for_window(index)
+                        .is_some_and(|kind| matches!(kind, "apps" | "launcher")))
                 && self.shell_bar_logical_origin(index).is_some_and(|origin| {
                     let size = self.window_geometry_size(index);
                     if self.frame_target_for_window(index).is_some_and(|target| {

@@ -56,10 +56,11 @@ fn cached_frame_syntax_does_not_freeze_placement_or_mapping_eligibility() {
         Some("A"),
         Rectangle::new((0, 0).into(), (44, 44).into()),
     );
-    f.set_app_id(index, &frame_widget_app_id(Some("A"), "wifi"));
+    let wifi = FrameLayout::default().widget_id("wifi").unwrap();
+    f.set_app_id(index, &frame_widget_app_id(Some("A"), &wifi));
     let target = Target {
         output: "A".into(),
-        target: LayoutTarget::widget("wifi"),
+        target: LayoutTarget::widget(&wifi),
     };
     assert_eq!(f.app.frame_target_for_window(index), Some(target.clone()));
     assert!(!f.app.layout_surface_visible(index));
@@ -102,10 +103,14 @@ fn cached_frame_identity_observes_protocol_role_reset_without_app_id_changed(
         Some("A"),
         Rectangle::new((0, 0).into(), (44, 44).into()),
     );
+    let wifi = FrameLayout::default().widget_id("wifi").unwrap();
     let (app_id, target) = match kind {
-        FrameKind::Widget => (frame_widget_app_id(Some("A"), "wifi"), "wifi"),
-        FrameKind::Group => (frame_group_app_id(Some("A"), "system"), "system"),
-        FrameKind::Grip => (frame_group_grip_app_id(Some("A"), "system"), "system"),
+        FrameKind::Widget => (frame_widget_app_id(Some("A"), &wifi), wifi),
+        FrameKind::Group => (frame_group_app_id(Some("A"), "system"), "system".into()),
+        FrameKind::Grip => (
+            frame_group_grip_app_id(Some("A"), "system"),
+            "system".into(),
+        ),
     };
     let root = f.app.windows[index].surface.wl_surface().unwrap();
     let has_buffer =
@@ -116,7 +121,7 @@ fn cached_frame_identity_observes_protocol_role_reset_without_app_id_changed(
         has_buffer(),
         "a real buffer must precede the null-buffer reset"
     );
-    let expected = Some((Some("A".into()), target.into()));
+    let expected = Some((Some("A".into()), target));
     assert_eq!(f.app.windows[index].frame_identity(kind), expected);
     assert!(f.app.is_layout_surface(index));
     assert!(f.app.frame_target_for_window(index).is_some());

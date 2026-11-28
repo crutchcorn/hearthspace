@@ -1,5 +1,6 @@
 //! An assistive menu action may focus only its validated, visible shell source.
 use super::*;
+use crate::frame_widgets;
 
 fn dock(
     compositor: &HeadlessCompositor,
@@ -14,7 +15,7 @@ fn dock(
         .as_str()
         .unwrap()
         .to_owned();
-    let app_id = hearthspace_common::frame_layout::frame_widget_app_id(Some(&output), "apps");
+    let app_id = frame_widgets::app_id(compositor, Some(&output), "apps");
     let dock = client.add(app_id.clone(), (300, 54), (0, 0), [0, 255, 0, 255]);
     let normal_id = query(compositor, "windows")["windows"]
         .as_array()

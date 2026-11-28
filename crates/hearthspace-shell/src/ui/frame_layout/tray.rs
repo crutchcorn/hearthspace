@@ -4,7 +4,7 @@ use crate::ui::state::{ShellOutputInstance, ShellState};
 use hearthspace_common::frame_layout::{
     FrameEdge, LayoutTarget, ObjectPlacement, Rect, frame_bounds,
 };
-use xilem::{AnyWidgetView, WidgetView};
+use xilem::{AnyWidgetView, WidgetView, masonry::layout::AsUnit, style::Style};
 
 pub(super) fn size(output: &Output, vertical: bool, desired: (f64, f64)) -> (f64, f64) {
     if output.rect.width <= 0.0 || output.rect.height <= 0.0 {
@@ -34,9 +34,25 @@ pub(super) fn size(output: &Output, vertical: bool, desired: (f64, f64)) -> (f64
 pub(super) fn content(
     state: &ShellState,
     output: &ShellOutputInstance,
+    instance: &str,
     vertical: bool,
     chain: &focus::Chain,
 ) -> Box<AnyWidgetView<ShellState>> {
+    if crate::ui::tray_state::visible(&state.tray.snapshot)
+        .next()
+        .is_none()
+    {
+        return xilem::view::sized_box(
+            hearthspace_ui_components::icons::icon(
+                hearthspace_ui_components::icons::Icon::AppsGrid,
+                20.0,
+            )
+            .label("Application tray, no tray applications"),
+        )
+        .width(44.0.px())
+        .height(44.0.px())
+        .boxed();
+    }
     let layout = state
         .frame_layout
         .snapshot
@@ -46,12 +62,12 @@ pub(super) fn content(
     let grouped = layout.is_some_and(|layout| {
         layout
             .layout
-            .group_for(&LayoutTarget::widget("tray"))
+            .group_for(&LayoutTarget::widget(instance))
             .is_some()
             || layout
                 .widgets
                 .iter()
-                .any(|part| part.id == "tray" && part.merged)
+                .any(|part| part.id == instance && part.merged)
     });
     let desired = widgets::size(
         state,

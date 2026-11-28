@@ -70,11 +70,13 @@ def elements(smoke, *, focused=False):
 def observe(smoke, edge, *, pending_mapping=False):
     status = observed_status(smoke)
     layout = output_layout(status)
-    widgets = [item for item in layout["widgets"] if item["id"] == "tray"]
+    widgets = [
+        item for item in layout["widgets"] if item.get("kind", item["id"]) == "tray"
+    ]
     if len(widgets) != 1:
         raise ControlError("expected one tray frame widget")
     widget = widgets[0]
-    placement = layout["layout"]["placements"].get("widget:tray", {})
+    placement = layout["layout"]["placements"].get(f"widget:{widget['id']}", {})
     if (
         widget.get("group")
         or widget.get("merged")
